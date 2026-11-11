@@ -38,3 +38,8 @@ def test_expired():
 def test_missing_hash():
     with pytest.raises(InitDataError):
         verify_init_data("auth_date=1", TOKEN)
+
+
+def test_empty_bot_token_rejected():
+    with pytest.raises(InitDataError):
+        verify_init_data(make_init_data(token=""), "")

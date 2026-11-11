@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     bot_token: str = ""
     admin_telegram_ids: str = ""  # comma-separated
     init_data_max_age_seconds: int = 86400
+    cors_origins: str = ""  # comma-separated frontend origins
 
     s3_endpoint: str = ""
     s3_bucket: str = "nurses"
@@ -20,6 +21,10 @@ class Settings(BaseSettings):
     stt_provider: str = "stub"
     llm_provider: str = "stub"
     tts_provider: str = "stub"
+
+    @property
+    def cors_origin_list(self) -> list[str]:
+        return [x.strip() for x in self.cors_origins.split(",") if x.strip()]
 
     @property
     def admin_ids(self) -> set[int]:

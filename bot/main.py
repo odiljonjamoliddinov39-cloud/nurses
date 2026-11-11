@@ -14,11 +14,13 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
     bot_token: str
-    miniapp_url: str = "https://example.com"
+    miniapp_url: str  # required: https URL of the deployed Mini App
     api_url: str = "http://backend:8000"
 
 
 settings = Settings()
+if not settings.miniapp_url.startswith("https://"):
+    raise SystemExit("MINIAPP_URL must be the https URL of the deployed Mini App")
 dp = Dispatcher()
 
 OPEN_APP = InlineKeyboardMarkup(inline_keyboard=[[

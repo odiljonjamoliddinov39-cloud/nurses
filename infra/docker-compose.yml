@@ -10,8 +10,10 @@ services:
   minio:  # S3-compatible storage for local dev (use Cloudflare R2 in production)
     image: minio/minio
     command: server /data --console-address ":9001"
-    environment: { MINIO_ROOT_USER: minio, MINIO_ROOT_PASSWORD: minio12345 }
-    ports: ["9000:9000", "9001:9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?set in .env}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set in .env}
+    ports: ["127.0.0.1:9000:9000", "127.0.0.1:9001:9001"]
     volumes: [miniodata:/data]
   backend:
     build: ../backend
@@ -29,9 +31,11 @@ services:
     depends_on: [backend]
   miniapp:
     build: ../miniapp
+    environment: { VITE_PROXY_TARGET: "http://backend:8000" }
     ports: ["5173:5173"]
   admin:
     build: ../admin
+    environment: { VITE_PROXY_TARGET: "http://backend:8000" }
     ports: ["5174:5174"]
 volumes:
   pgdata:

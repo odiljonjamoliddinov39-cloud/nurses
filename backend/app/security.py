@@ -3,10 +3,12 @@ import hashlib
 import hmac
 import json
 import time
+from datetime import datetime, timezone
 from urllib.parse import parse_qsl
 
 from fastapi import Depends, Header, HTTPException
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .config import Settings, get_settings
@@ -20,6 +22,9 @@ class InitDataError(ValueError):
 
 def verify_init_data(init_data: str, bot_token: str, max_age: int = 86400, now: float | None = None) -> dict:
     """Validate Telegram WebApp initData; return the parsed fields (``user`` decoded)."""
+    if not bot_token:
+        # An empty token gives a publicly reproducible signing key: never verify with it.
+        raise InitDataError("bot token not configured")
     pairs = dict(parse_qsl(init_data, keep_blank_values=True))
     received = pairs.pop("hash", None)
     if not received:
@@ -43,6 +48,8 @@ async def current_user(
     settings: Settings = Depends(get_settings),
 ) -> User:
     """Authorization header format: ``tma <initData>``."""
+    if not settings.bot_token:
+        raise HTTPException(503, "server misconfigured: BOT_TOKEN not set")
     scheme, _, raw = authorization.partition(" ")
     if scheme.lower() != "tma" or not raw:
         raise HTTPException(401, "missing initData")
@@ -54,11 +61,16 @@ async def current_user(
     tg_id = tg.get("id")
     if not tg_id:
         raise HTTPException(401, "no user in initData")
-    user = (await session.execute(select(User).where(User.telegram_id == tg_id))).scalar_one_or_none()
-    if user is None:
-        user = User(telegram_id=tg_id, full_name=tg.get("first_name"), ui_language="uz")
-        session.add(user)
-        await session.commit()
+    full_name = " ".join(p for p in (tg.get("first_name"), tg.get("last_name")) if p) or None
+    # Atomic first-login: concurrent requests for a new user cannot violate the unique key.
+    await session.execute(
+        pg_insert(User).values(telegram_id=tg_id, full_name=full_name, ui_language="uz")
+        .on_conflict_do_nothing(index_elements=[User.telegram_id]))
+    user = (await session.execute(select(User).where(User.telegram_id == tg_id))).scalar_one()
+    now = datetime.now(timezone.utc)
+    if user.last_seen is None or (now - user.last_seen).total_seconds() > 60:
+        user.last_seen = now
+    await session.commit()
     if user.status == UserStatus.blocked:
         raise HTTPException(403, "blocked")
     return user

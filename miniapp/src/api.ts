@@ -5,8 +5,11 @@ declare global {
   }
 }
 
+// Dev: Vite proxies /api to the backend. Production (Vercel): set VITE_API_URL=https://<backend>.
+const BASE: string = import.meta.env.VITE_API_URL ?? "/api";
+
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const res = await fetch(`/api${path}`, {
+  const res = await fetch(`${BASE}${path}`, {
     ...init,
     headers: { ...init.headers, Authorization: `tma ${window.Telegram?.WebApp?.initData ?? ""}` },
   });
