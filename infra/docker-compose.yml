@@ -1,0 +1,38 @@
+# Run from repo root: docker compose -f infra/docker-compose.yml --env-file .env up --build
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment: { POSTGRES_USER: nurses, POSTGRES_PASSWORD: nurses, POSTGRES_DB: nurses }
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U nurses"], interval: 5s, retries: 10 }
+  redis:
+    image: redis:7-alpine
+  minio:  # S3-compatible storage for local dev (use Cloudflare R2 in production)
+    image: minio/minio
+    command: server /data --console-address ":9001"
+    environment: { MINIO_ROOT_USER: minio, MINIO_ROOT_PASSWORD: minio12345 }
+    ports: ["9000:9000", "9001:9001"]
+    volumes: [miniodata:/data]
+  backend:
+    build: ../backend
+    env_file: ../.env
+    depends_on: { postgres: { condition: service_healthy }, redis: { condition: service_started } }
+    ports: ["8000:8000"]
+  worker:
+    build: ../backend
+    command: arq app.workers.tasks.WorkerSettings
+    env_file: ../.env
+    depends_on: [backend]
+  bot:
+    build: ../bot
+    env_file: ../.env
+    depends_on: [backend]
+  miniapp:
+    build: ../miniapp
+    ports: ["5173:5173"]
+  admin:
+    build: ../admin
+    ports: ["5174:5174"]
+volumes:
+  pgdata:
+  miniodata:
