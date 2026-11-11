@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -12,8 +13,14 @@ from . import models  # noqa: F401  (register tables)
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     # Dev/MVP bootstrap: create missing tables. TODO: replace with Alembic migrations.
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    # A down/misconfigured database must not kill the process: /health stays up and
+    # /ready reports 503 until the database is reachable.
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+    except Exception:
+        logging.getLogger("uvicorn.error").exception(
+            "Database unavailable at startup; check DATABASE_URL. Serving without tables.")
     yield
 
 
