@@ -1,5 +1,6 @@
 from functools import lru_cache
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -21,6 +22,15 @@ class Settings(BaseSettings):
     stt_provider: str = "stub"
     llm_provider: str = "stub"
     tts_provider: str = "stub"
+
+    @field_validator("database_url")
+    @classmethod
+    def _asyncpg_scheme(cls, v: str) -> str:
+        # Railway/Heroku-style URLs use postgres:// or postgresql://; SQLAlchemy async needs asyncpg.
+        for prefix in ("postgres://", "postgresql://"):
+            if v.startswith(prefix):
+                return "postgresql+asyncpg://" + v[len(prefix):]
+        return v
 
     @property
     def cors_origin_list(self) -> list[str]:
