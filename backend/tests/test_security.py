@@ -107,3 +107,21 @@ def test_session_forged():
         read_admin_session(token, "other:TOKEN")
     with pytest.raises(InitDataError):
         read_admin_session("garbage", TOKEN)
+
+
+# --- grading helpers ---
+from app.grading import AIError, parse_ai_json, self_check_score  # noqa: E402
+
+
+def test_self_check_score_weighted():
+    kps = [(1, 1.0), (2, 2.0), (3, 2.0)]
+    assert self_check_score(kps, {2, 3}) == 4.0
+    assert self_check_score(kps, set()) == 0.0
+    assert self_check_score(kps, {1, 2, 3}) == 5.0
+    assert self_check_score([], {1}) == 0.0
+
+
+def test_parse_ai_json():
+    assert parse_ai_json('```json\n{"score": 4}\n```')["score"] == 4
+    with pytest.raises(AIError):
+        parse_ai_json("no json here")

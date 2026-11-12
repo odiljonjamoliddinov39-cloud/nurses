@@ -1,9 +1,26 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, ApiError, inTelegram, setToken } from "./api";
+import { api, ApiError, inTelegram, post, setToken, setUnauthorizedHandler } from "./api";
+import Attempts from "./pages/Attempts";
+import Content from "./pages/Content";
+import Dashboard from "./pages/Dashboard";
+import Logs from "./pages/Logs";
+import Payments from "./pages/Payments";
+import Plans from "./pages/Plans";
+import Settings from "./pages/Settings";
+import Users from "./pages/Users";
 
-const MODULES = ["Dashboard", "Payment requests", "Users", "Plans", "Courses",
-  "Questions", "Audio", "Settings", "Logs"];
 const BOT_USERNAME: string | undefined = import.meta.env.VITE_BOT_USERNAME;
+
+const PAGES: { id: string; label: string; icon: string }[] = [
+  { id: "dashboard", label: "Dashboard", icon: "📈" },
+  { id: "payments", label: "Payment requests", icon: "💳" },
+  { id: "users", label: "Users", icon: "👥" },
+  { id: "content", label: "Courses & questions", icon: "📚" },
+  { id: "plans", label: "Plans", icon: "🏷️" },
+  { id: "attempts", label: "Answers", icon: "🎙️" },
+  { id: "settings", label: "Settings", icon: "⚙️" },
+  { id: "logs", label: "Logs", icon: "📜" },
+];
 
 type Me = { telegram_id: number; full_name: string | null };
 type State = { kind: "loading" } | { kind: "login"; error?: string } | { kind: "ok"; me: Me };
@@ -22,12 +39,26 @@ function TelegramLoginButton({ onAuth }: { onAuth: (u: Record<string, string | n
     s.setAttribute("data-onauth", "onTelegramAuth(user)");
     box.current.replaceChildren(s);
   }, [onAuth]);
-  if (!BOT_USERNAME) return <p>VITE_BOT_USERNAME is not set for this deployment.</p>;
-  return <div ref={box} />;
+  if (!BOT_USERNAME) return <p className="error-text">VITE_BOT_USERNAME is not set for this deployment.</p>;
+  return <div ref={box} className="tg-login" />;
 }
+
+const currentPage = () => {
+  const id = window.location.hash.replace(/^#\/?/, "");
+  return PAGES.some((p) => p.id === id) ? id : "dashboard";
+};
 
 export default function App() {
   const [state, setState] = useState<State>({ kind: "loading" });
+  const [page, setPage] = useState(currentPage);
+  const [menu, setMenu] = useState(false);
+
+  useEffect(() => {
+    const h = () => setPage(currentPage());
+    window.addEventListener("hashchange", h);
+    return () => window.removeEventListener("hashchange", h);
+  }, []);
+  const go = (id: string) => { window.location.hash = `/${id}`; setMenu(false); };
 
   const check = useCallback(() => {
     api<Me>("/admin/me")
@@ -39,11 +70,14 @@ export default function App() {
       });
   }, []);
 
-  useEffect(check, [check]);
+  useEffect(() => {
+    setUnauthorizedHandler(() => { setToken(null); setState({ kind: "login", error: "Session expired, sign in again." }); });
+    check();
+  }, [check]);
 
   const onAuth = useCallback((user: Record<string, string | number>) => {
     setState({ kind: "loading" });
-    api<{ token: string }>("/admin/login", { method: "POST", body: JSON.stringify(user) })
+    post<{ token: string }>("/admin/login", user)
       .then(({ token }) => { setToken(token); check(); })
       .catch((e) => setState({
         kind: "login",
@@ -51,24 +85,47 @@ export default function App() {
       }));
   }, [check]);
 
-  if (state.kind === "loading") return <p>Loading…</p>;
+  if (state.kind === "loading") return <div className="login"><p className="muted">Loading…</p></div>;
   if (state.kind === "login") {
     return (
-      <main style={{ maxWidth: 420, margin: "15vh auto", textAlign: "center", fontFamily: "system-ui" }}>
-        <h1>Admin sign-in</h1>
-        <p>Sign in with the Telegram account listed as admin.</p>
-        {state.error && <p style={{ color: "#c0392b" }}>{state.error}</p>}
-        {inTelegram() ? <p>Not authorised.</p> : <TelegramLoginButton onAuth={onAuth} />}
-      </main>
+      <div className="login">
+        <div className="login-card">
+          <h1>Admin sign-in</h1>
+          <p className="muted">Sign in with the Telegram account listed as admin.</p>
+          {state.error && <p className="error-text">{state.error}</p>}
+          {inTelegram() ? <p>Not authorised.</p> : <TelegramLoginButton onAuth={onAuth} />}
+        </div>
+      </div>
     );
   }
+
   return (
-    <nav style={{ fontFamily: "system-ui" }}>
-      <h1>Admin</h1>
-      <p>Signed in as {state.me.full_name ?? state.me.telegram_id}
-        {!inTelegram() && <> · <button onClick={() => { setToken(null); setState({ kind: "login" }); }}>Sign out</button></>}
-      </p>
-      <ul>{MODULES.map((m) => <li key={m}>{m}</li>)}</ul>
-    </nav>
+    <div className="layout">
+      <aside className={menu ? "open" : ""}>
+        <div className="brand">Oral Exam Trainer<span>Admin</span></div>
+        <nav>
+          {PAGES.map((p) => (
+            <a key={p.id} href={`#/${p.id}`} className={page === p.id ? "active" : ""} onClick={() => setMenu(false)}>
+              <span>{p.icon}</span>{p.label}
+            </a>
+          ))}
+        </nav>
+        <div className="who">
+          {state.me.full_name ?? state.me.telegram_id}
+          {!inTelegram() && <button className="link" onClick={() => { setToken(null); setState({ kind: "login" }); }}>Sign out</button>}
+        </div>
+      </aside>
+      <main>
+        <button className="burger" onClick={() => setMenu(!menu)}>☰</button>
+        {page === "dashboard" && <Dashboard go={go} />}
+        {page === "payments" && <Payments />}
+        {page === "users" && <Users />}
+        {page === "content" && <Content />}
+        {page === "plans" && <Plans />}
+        {page === "attempts" && <Attempts />}
+        {page === "settings" && <Settings />}
+        {page === "logs" && <Logs />}
+      </main>
+    </div>
   );
 }

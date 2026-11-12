@@ -3,7 +3,7 @@ import enum
 from datetime import datetime
 
 from sqlalchemy import (JSON, BigInteger, Boolean, DateTime, Enum, Float,
-                        ForeignKey, Integer, String, Table, Column, Text, func)
+                        ForeignKey, Integer, LargeBinary, String, Table, Column, Text, func)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .db import Base
@@ -150,6 +150,7 @@ class Subscription(Base):
     ends_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     source: Mapped[SubscriptionSource] = mapped_column(Enum(SubscriptionSource))
     status: Mapped[SubscriptionStatus] = mapped_column(Enum(SubscriptionStatus), default=SubscriptionStatus.active)
+    reminded_days: Mapped[int | None] = mapped_column(Integer)  # smallest "days left" reminder already sent
 
 
 class Attempt(Base):
@@ -212,4 +213,17 @@ class AuditLog(Base):
     old_value: Mapped[dict | None] = mapped_column(JSON)
     new_value: Mapped[dict | None] = mapped_column(JSON)
     reason: Mapped[str | None] = mapped_column(String(500))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class StoredFile(Base):
+    """Uploaded audio and receipts, kept in PostgreSQL (no separate object storage needed).
+    Referenced from other rows as ``file:<id>``; served only through authorised endpoints."""
+    __tablename__ = "stored_files"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    owner_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), index=True)
+    kind: Mapped[str] = mapped_column(String(32))  # answer_audio / receipt / question_audio / model_audio
+    content_type: Mapped[str] = mapped_column(String(100))
+    size: Mapped[int] = mapped_column(Integer)
+    data: Mapped[bytes] = mapped_column(LargeBinary)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

@@ -25,10 +25,6 @@ services:
     command: arq app.workers.tasks.WorkerSettings
     env_file: ../.env
     depends_on: [backend]
-  bot:
-    build: ../bot
-    env_file: ../.env
-    depends_on: [backend]
   miniapp:
     build: ../miniapp
     environment: { VITE_PROXY_TARGET: "http://backend:8000" }

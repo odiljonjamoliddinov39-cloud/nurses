@@ -14,6 +14,9 @@ class Settings(BaseSettings):
     init_data_max_age_seconds: int = 86400
     admin_session_ttl_seconds: int = 7 * 86400  # browser admin login lifetime
     cors_origins: str = ""  # comma-separated frontend origins
+    public_url: str = ""  # https URL of this API, for the Telegram webhook; Railway's domain is used if empty
+    railway_public_domain: str = ""  # injected by Railway
+    miniapp_url: str = ""  # default for the "miniapp_url" admin setting
 
     s3_endpoint: str = ""
     s3_bucket: str = "nurses"
@@ -36,6 +39,12 @@ class Settings(BaseSettings):
     @property
     def cors_origin_list(self) -> list[str]:
         return [x.strip() for x in self.cors_origins.split(",") if x.strip()]
+
+    @property
+    def public_base(self) -> str:
+        if self.public_url:
+            return self.public_url.rstrip("/")
+        return f"https://{self.railway_public_domain}" if self.railway_public_domain else ""
 
     @property
     def admin_ids(self) -> set[int]:
