@@ -166,7 +166,7 @@ Multi-course support is data-driven: a new profession or exam is a new `Course` 
 ## 6. Security and non-functional requirements
 
 - Every Mini App request is verified against the Telegram `initData` signature; there are no passwords or logins.
-- The admin panel is limited to Telegram IDs on the admin list (Telegram login).
+- The admin panel runs in a browser and signs in with the Telegram Login Widget; the backend verifies the widget signature and issues a signed 7-day session token. Only Telegram IDs on the admin list get a token.
 - Receipts and recordings are never public: private bucket, short-lived signed URLs.
 - Speed: app opens in under 3 s on 4G; grade result in under 10 s for a 3-minute answer.
 - Languages: UI in Uzbek (Latin), Russian, English, editable in admin. Course content keeps its original language.

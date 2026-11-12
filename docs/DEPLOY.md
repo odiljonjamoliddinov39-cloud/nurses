@@ -19,10 +19,14 @@ Tables are created on backend startup (Alembic is a TODO).
 
 ## 2. Vercel (two projects, same repo)
 - **miniapp**: Root Directory `miniapp`, framework Vite, env `VITE_API_URL=https://<backend domain>`.
-- **admin**: Root Directory `admin`, framework Vite, env `VITE_API_URL=https://<backend domain>`.
+- **admin**: Root Directory `admin`, framework Vite, env `VITE_API_URL=https://<backend domain>` and
+  `VITE_BOT_USERNAME=<bot username without @>` (for the browser sign-in button).
 
 ## 3. Telegram
-- Set the bot's menu button / Mini App URL (BotFather: `/setmenubutton`) to the miniapp Vercel URL.
+- Set the bot's menu button / Mini App URL (BotFather: `/setmenubutton`) to the miniapp's **production** URL
+  (`https://<project>.vercel.app`), not a per-deployment URL: those sit behind Vercel's login.
+- The admin panel runs in a normal browser and signs in with Telegram Login. In BotFather send `/setdomain`,
+  pick the bot and enter the admin domain (e.g. `admin-xxxx.vercel.app`). Only IDs in `ADMIN_TELEGRAM_IDS` get in.
 - Keep `BOT_TOKEN` secret: only in Railway variables, never in git or chat.
 
 ## Moving off Railway later

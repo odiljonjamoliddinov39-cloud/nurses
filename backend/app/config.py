@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     bot_token: str = ""
     admin_telegram_ids: str = ""  # comma-separated
     init_data_max_age_seconds: int = 86400
+    admin_session_ttl_seconds: int = 7 * 86400  # browser admin login lifetime
     cors_origins: str = ""  # comma-separated frontend origins
 
     s3_endpoint: str = ""
