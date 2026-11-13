@@ -225,3 +225,70 @@ async def test_subscription_job(client):
     await subscription_job()
     reminders = [p for m, p in client.sent if m == "sendMessage" and p["chat_id"] == 88]
     assert len(reminders) == 1
+
+
+async def seed_course(client, A, n=6, topics=2):
+    cid = (await client.post("/admin/courses", headers=A, json={"name": {"uz": "Kurs"}, "is_published": True})).json()["id"]
+    tids = [(await client.post(f"/admin/courses/{cid}/topics", headers=A, json={"name": f"T{i}"})).json()["id"]
+            for i in range(topics)]
+    qids = []
+    for i in range(1, n + 1):
+        qids.append((await client.post("/admin/questions", headers=A, json={
+            "course_id": cid, "topic_id": tids[i % topics], "number": i, "text": f"Q{i}?", "model_answer": f"A{i}",
+            "key_points": [{"text": "k1", "weight": 1}]})).json()["id"])
+    return cid, tids, qids
+
+
+async def answer(client, U, qid, covered=True):
+    att = (await client.post("/attempts", headers=U, data={"question_id": str(qid)},
+                             files={"audio": ("a.webm", AUDIO, "audio/webm")})).json()
+    ids = [k["id"] for k in att["key_points"]] if covered else []
+    return (await client.post(f"/attempts/{att['id']}/self-grade", headers=U, json={"covered": ids})).json()
+
+
+async def test_favourites_stats_mock_learn(client):
+    A = {"Authorization": "Bearer " + (await client.post("/admin/login", json=widget(ADMIN))).json()["token"]}
+    cid, tids, qids = await seed_course(client, A)
+    await client.put("/admin/settings", headers=A, json={"free_questions": 3})
+    U = init_data(77)
+
+    # favourites toggle and show up in the question list
+    assert (await client.post(f"/questions/{qids[1]}/favourite", headers=U, json={"on": True})).json() == {"favourite": True}
+    assert (await client.post(f"/questions/{qids[1]}/favourite", headers=U, json={"on": True})).status_code == 200  # idempotent
+    qs = (await client.get(f"/courses/{cid}/questions", headers=U)).json()["questions"]
+    assert [q["favourite"] for q in qs] == [False, True, False, False, False, False]
+    assert (await client.get(f"/courses/{cid}/questions", headers=init_data(78))).json()["questions"][1]["favourite"] is False
+    await client.post(f"/questions/{qids[1]}/favourite", headers=U, json={"on": False})
+    assert not any(q["favourite"] for q in (await client.get(f"/courses/{cid}/questions", headers=U)).json()["questions"])
+    assert (await client.post("/questions/999999/favourite", headers=U, json={"on": True})).status_code == 404
+
+    # stats: empty first, then after two graded answers (one full score, one zero)
+    st = (await client.get(f"/stats?course_id={cid}", headers=U)).json()
+    assert st["total"] == 6 and st["answered"] == 0 and st["average"] is None and st["streak"] == 0
+    assert len(st["trend"]) == 14 and st["weakest_topics"] == []
+    assert (await answer(client, U, qids[0], covered=True))["score"] == 5.0
+    assert (await answer(client, U, qids[1], covered=False))["score"] == 0.0
+    st = (await client.get(f"/stats?course_id={cid}", headers=U)).json()
+    assert st["answered"] == 2 and st["average"] == 2.5 and st["streak"] == 1
+    assert st["trend"][-1]["count"] == 2 and st["trend"][-1]["avg"] == 2.5
+    assert st["weakest_topics"][0]["avg"] == 0.0 and st["weakest_topics"][0]["answered"] == 1
+    assert all(w["avg"] < 4 for w in st["weakest_topics"])  # a strong topic is not "weakest"
+    assert (await client.get("/stats?course_id=999999", headers=U)).status_code == 404
+    assert (await client.get("/stats", headers=U)).json()["answered"] == 2  # defaults to the first published course
+    assert (await client.get("/stats", headers=init_data(79))).json()["total"] == 6
+    assert (await client.get(f"/questions/{qids[0]}", headers=U)).json()["favourite"] is False
+
+    # mock exam: only the 3 free questions are available, count is clamped to 3-5
+    m = (await client.get(f"/courses/{cid}/mock?count=5", headers=U)).json()
+    assert len(m["questions"]) == 3 and {q["id"] for q in m["questions"]} == set(qids[:3])
+    assert m["total_seconds"] == 3 * m["per_answer_seconds"]
+    assert len((await client.get(f"/courses/{cid}/mock?count=1", headers=U)).json()["questions"]) == 3
+
+    # learn playlist: free questions only, with model answers
+    items = (await client.get(f"/courses/{cid}/learn", headers=U)).json()["items"]
+    assert [i["number"] for i in items] == [1, 2, 3] and items[0]["model_answer"] == "A1"
+
+    # blocked-by-paywall questions never leak: with no free questions the lists are empty / 404
+    await client.put("/admin/settings", headers=A, json={"free_questions": 0})
+    assert (await client.get(f"/courses/{cid}/learn", headers=U)).json()["items"] == []
+    assert (await client.get(f"/courses/{cid}/mock", headers=U)).status_code == 404

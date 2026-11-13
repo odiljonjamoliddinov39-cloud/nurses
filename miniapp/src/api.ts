@@ -66,7 +66,7 @@ export interface Me {
 export interface Course { id: number; name: I18n; description: I18n | null; questions: number }
 export interface QuestionItem {
   id: number; number: number; text: string; topic_id: number | null;
-  locked: boolean; free: boolean; best_score: number | null; attempts: number;
+  locked: boolean; free: boolean; best_score: number | null; attempts: number; favourite: boolean;
 }
 export interface CourseQuestions {
   course: { id: number; name: I18n }; full_access: boolean;
@@ -74,7 +74,7 @@ export interface CourseQuestions {
 }
 export interface QuestionFull {
   id: number; number: number; course_id: number; text: string; topic: string | null;
-  locked: boolean; question_audio: number | null;
+  locked: boolean; question_audio: number | null; favourite: boolean;
 }
 export interface KeyPoint { id: number; text: string; weight: number }
 export interface Attempt {
@@ -89,4 +89,17 @@ export interface Plan { id: number; name: string; days: number; price_uzs: numbe
 export interface Payment {
   id: number; plan: string; amount: number; code: string; status: string;
   reject_reason: string | null; created_at: string;
+}
+
+export interface Stats {
+  total: number; answered: number; average: number | null; streak: number;
+  trend: { date: string; avg: number | null; count: number }[];
+  weakest_topics: { topic: string; avg: number; answered: number }[];
+}
+export interface MockSet {
+  questions: { id: number; number: number }[]; total_seconds: number; per_answer_seconds: number;
+}
+export interface LearnItem {
+  id: number; number: number; text: string; topic: string | null; model_answer: string;
+  question_audio: number | null; answer_audio: number | null;
 }

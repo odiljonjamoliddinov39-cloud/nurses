@@ -1,6 +1,7 @@
 """Mini App API for learners. Every request is authenticated with Telegram initData."""
 import logging
-from datetime import timedelta
+import random
+from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
@@ -10,7 +11,7 @@ from sqlalchemy.orm import selectinload
 
 from ..db import SessionLocal, get_session
 from ..grading import AIError, gemini_grade, self_check_score
-from ..models import (Attempt, AttemptState, Course, KeyPoint, PaymentRequest, PaymentStatus, Plan,
+from ..models import (Attempt, AttemptState, Course, Favourite, KeyPoint, PaymentRequest, PaymentStatus, Plan,
                       Question, StoredFile, Topic, User, UserStatus)
 from ..config import get_settings
 from ..security import current_user
@@ -112,6 +113,9 @@ async def course_questions(course_id: int, user: User = Depends(current_user),
         select(Attempt.question_id, func.max(func.coalesce(Attempt.manual_score, Attempt.score)), func.count())
         .where(Attempt.user_id == user.id, Attempt.state == AttemptState.graded)
         .group_by(Attempt.question_id))).all()}
+    favs = set((await session.execute(select(Favourite.question_id).join(
+        Question, Question.id == Favourite.question_id).where(
+        Favourite.user_id == user.id, Question.course_id == course_id))).scalars())
     return {
         "course": {"id": course.id, "name": course.name},
         "full_access": full,
@@ -120,6 +124,7 @@ async def course_questions(course_id: int, user: User = Depends(current_user),
             "id": q.id, "number": q.number, "text": q.text, "topic_id": q.topic_id,
             "locked": not (full or q.id in free), "free": q.id in free,
             "best_score": stats.get(q.id, (None, 0))[0], "attempts": stats.get(q.id, (None, 0))[1],
+            "favourite": q.id in favs,
         } for q in qs],
     }
 
@@ -134,9 +139,146 @@ async def get_question(question_id: int, user: User = Depends(current_user),
         raise HTTPException(404, "question not found")
     allowed = await can_answer(session, user, q)
     topic = await session.get(Topic, q.topic_id) if q.topic_id else None
+    fav = await session.get(Favourite, (user.id, q.id)) is not None
     return {"id": q.id, "number": q.number, "course_id": q.course_id, "text": q.text,
-            "topic": topic.name if topic else None, "locked": not allowed,
+            "topic": topic.name if topic else None, "locked": not allowed, "favourite": fav,
             "question_audio": file_id(q.question_audio) if allowed else None}
+
+
+# ---------------------------------------------------------------- favourites, stats, mock exam, learn mode
+
+TASHKENT = timezone(timedelta(hours=5))  # Uzbekistan has no daylight saving
+
+
+async def accessible_questions(session: AsyncSession, user: User, course_id: int) -> list[Question]:
+    """Active questions of a published course the user may open (full plan, or the free ones)."""
+    not_blocked(user)
+    course = await session.get(Course, course_id)
+    if not course or not course.is_published:
+        raise HTTPException(404, "course not found")
+    s = await get_settings_map(session)
+    sub = await active_subscription(session, user.id)
+    full = await subscription_covers(session, sub, course_id)
+    free = await free_question_ids(session, course_id, int(s["free_questions"]))
+    qs = (await session.execute(select(Question).where(
+        Question.course_id == course_id, Question.is_active.is_(True))
+        .order_by(Question.number, Question.id))).scalars().all()
+    return [q for q in qs if full or q.id in free]
+
+
+class FavouritePatch(BaseModel):
+    on: bool = True
+
+
+@router.post("/questions/{question_id}/favourite")
+async def set_favourite(question_id: int, body: FavouritePatch, user: User = Depends(current_user),
+                        session: AsyncSession = Depends(get_session)):
+    not_blocked(user)
+    q = await session.get(Question, question_id)
+    if not q or not q.is_active:
+        raise HTTPException(404, "question not found")
+    existing = await session.get(Favourite, (user.id, question_id))
+    if body.on and not existing:
+        session.add(Favourite(user_id=user.id, question_id=question_id))
+    elif not body.on and existing:
+        await session.delete(existing)
+    await session.commit()
+    return {"favourite": body.on}
+
+
+@router.get("/stats")
+async def my_stats(course_id: int | None = None, user: User = Depends(current_user),
+                   session: AsyncSession = Depends(get_session)):
+    """Progress for the statistics screen: coverage, average, 14-day trend, weakest topics, streak.
+    Without course_id: the user's chosen course, else the first published one."""
+    not_blocked(user)
+    explicit = course_id is not None
+    if course_id is None:
+        course_id = user.course_id
+    course = await session.get(Course, course_id) if course_id else None
+    if course is not None and not course.is_published:
+        course = None
+    if course is None and not explicit:  # nothing chosen yet (or it was unpublished): first published course
+        course = (await session.execute(select(Course).where(Course.is_published.is_(True))
+                                        .order_by(Course.id).limit(1))).scalar_one_or_none()
+    if course is None:
+        raise HTTPException(404, "course not found")
+    course_id = course.id
+    score = func.coalesce(Attempt.manual_score, Attempt.score)
+    total = (await session.execute(select(func.count()).select_from(Question).where(
+        Question.course_id == course_id, Question.is_active.is_(True)))).scalar_one()
+
+    best = (await session.execute(
+        select(Attempt.question_id, Question.topic_id, func.max(score))
+        .join(Question, Question.id == Attempt.question_id)
+        .where(Question.course_id == course_id, Question.is_active.is_(True), Attempt.user_id == user.id,
+               Attempt.state == AttemptState.graded, score.is_not(None))
+        .group_by(Attempt.question_id, Question.topic_id))).all()
+    average = round(sum(b for _, _, b in best) / len(best), 2) if best else None
+
+    today = datetime.now(TASHKENT).date()
+    days = [today - timedelta(days=i) for i in range(13, -1, -1)]
+    since = datetime.now(timezone.utc) - timedelta(days=15)
+    recent = (await session.execute(
+        select(Attempt.created_at, score).join(Question, Question.id == Attempt.question_id)
+        .where(Question.course_id == course_id, Attempt.user_id == user.id,
+               Attempt.state == AttemptState.graded, score.is_not(None), Attempt.created_at > since))).all()
+    per_day: dict[date, list[float]] = {}
+    for created, sc in recent:
+        per_day.setdefault(created.astimezone(TASHKENT).date(), []).append(sc)
+    trend = [{"date": d.isoformat(),
+              "avg": round(sum(per_day[d]) / len(per_day[d]), 2) if d in per_day else None,
+              "count": len(per_day.get(d, []))} for d in days]
+
+    topic_names = dict((await session.execute(select(Topic.id, Topic.name).where(
+        Topic.course_id == course_id))).all())
+    by_topic: dict[int, list[float]] = {}
+    for _, topic_id, b in best:
+        if topic_id in topic_names:
+            by_topic.setdefault(topic_id, []).append(b)
+    weakest = sorted(({"topic": topic_names[t], "avg": round(sum(v) / len(v), 2), "answered": len(v)}
+                      for t, v in by_topic.items() if sum(v) / len(v) < 4), key=lambda x: x["avg"])[:3]
+
+    # Streak: consecutive days (Tashkent time) with a graded answer, counted back from today or yesterday.
+    stamps = (await session.execute(
+        select(Attempt.created_at).where(Attempt.user_id == user.id, Attempt.state == AttemptState.graded)
+        .order_by(Attempt.created_at.desc()).limit(3000))).scalars()
+    active_days = {c.astimezone(TASHKENT).date() for c in stamps}
+    cursor = today if today in active_days else today - timedelta(days=1)
+    streak = 0
+    while cursor in active_days:
+        streak += 1
+        cursor -= timedelta(days=1)
+
+    return {"total": total, "answered": len(best), "average": average, "trend": trend,
+            "weakest_topics": weakest, "streak": streak}
+
+
+@router.get("/courses/{course_id}/mock")
+async def mock_exam(course_id: int, count: int = 4, user: User = Depends(current_user),
+                    session: AsyncSession = Depends(get_session)):
+    """A random set of 3-5 questions, like the real commission, with one total time limit."""
+    qs = await accessible_questions(session, user, course_id)
+    if not qs:
+        raise HTTPException(404, "no questions available")
+    n = min(max(count, 3), 5, len(qs))
+    picked = sorted(random.sample(qs, n), key=lambda q: (q.number, q.id))
+    s = await get_settings_map(session)
+    per_answer = int(s["max_answer_seconds"]) or 180
+    return {"questions": [{"id": q.id, "number": q.number} for q in picked],
+            "total_seconds": per_answer * n, "per_answer_seconds": per_answer}
+
+
+@router.get("/courses/{course_id}/learn")
+async def learn_playlist(course_id: int, user: User = Depends(current_user),
+                         session: AsyncSession = Depends(get_session)):
+    """Question + model answer (text and audio) for listening mode; only what the user may open."""
+    qs = await accessible_questions(session, user, course_id)
+    topics = dict((await session.execute(select(Topic.id, Topic.name).where(Topic.course_id == course_id))).all())
+    return {"items": [{
+        "id": q.id, "number": q.number, "text": q.text, "topic": topics.get(q.topic_id),
+        "model_answer": q.model_answer, "question_audio": file_id(q.question_audio),
+        "answer_audio": file_id(q.answer_audio)} for q in qs]}
 
 
 # ---------------------------------------------------------------- attempts

@@ -5,8 +5,10 @@ import { AuthAudio, ErrorBox, haptic, ScoreRing, Section, Spinner } from "../ui"
 
 const SCORES = [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5];
 
-export default function AttemptView({ id, initial, onAgain, onNext, onList }: {
+export default function AttemptView({ id, initial, onAgain, onNext, onList, compact, nextLabel }: {
   id: number; initial?: Attempt; onAgain: (questionId: number) => void; onNext?: () => void; onList: () => void;
+  /** Used inside the mock exam: no "answer again" button. */
+  compact?: boolean; nextLabel?: string;
 }) {
   const t = useT();
   const [a, setA] = useState<Attempt | null>(initial ?? null);
@@ -143,8 +145,8 @@ export default function AttemptView({ id, initial, onAgain, onNext, onList }: {
       {a.transcript && <Section title={t("transcript")}><div className="card"><p className="pre muted">{a.transcript}</p></div></Section>}
       {modelBlock}
       <div className="actions">
-        <button className="btn secondary" onClick={() => onAgain(a.question.id)}>↺ {t("try_again")}</button>
-        {onNext ? <button className="btn" onClick={onNext}>{t("next_question")} →</button>
+        {!compact && <button className="btn secondary" onClick={() => onAgain(a.question.id)}>↺ {t("try_again")}</button>}
+        {onNext ? <button className="btn" onClick={onNext}>{nextLabel ?? t("next_question")} →</button>
           : <button className="btn" onClick={onList}>{t("to_list")}</button>}
       </div>
     </div>

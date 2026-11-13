@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api, ApiError, type Attempt, type Me, type QuestionFull } from "../api";
 import { useT } from "../i18n";
 import Recorder, { type Recording } from "../Recorder";
+import { uploadAnswer } from "../upload";
 import { AuthAudio, ErrorBox, haptic, Spinner } from "../ui";
 
 export default function QuestionScreen({ me, id, onAttempt, onPaywall }: {
@@ -12,23 +13,29 @@ export default function QuestionScreen({ me, id, onAttempt, onPaywall }: {
   const [error, setError] = useState("");
   const [rec, setRec] = useState<Recording | null>(null);
   const [sending, setSending] = useState(false);
+  const [fav, setFav] = useState(false);
 
   const load = () => {
     setError("");
     api<QuestionFull>(`/questions/${id}`).then(setQ).catch((e) => setError(e.message));
   };
   useEffect(load, [id]);
+  useEffect(() => { if (q) setFav(q.favourite); }, [q?.id]); // eslint-disable-line
+
+  const toggleFav = () => {
+    if (!q) return;
+    const on = !fav;
+    haptic("light");
+    setFav(on);
+    api(`/questions/${q.id}/favourite`, { method: "POST", body: JSON.stringify({ on }) }).catch(() => setFav(!on));
+  };
 
   const submit = async () => {
     if (!rec || !q) return;
     setSending(true);
     setError("");
-    const ext = rec.mime.includes("mp4") || rec.mime.includes("aac") ? "m4a" : rec.mime.includes("ogg") ? "ogg" : "webm";
-    const fd = new FormData();
-    fd.append("question_id", String(q.id));
-    fd.append("audio", new File([rec.blob], `answer.${ext}`, { type: rec.mime }));
     try {
-      const a = await api<Attempt>("/attempts", { method: "POST", body: fd });
+      const a = await uploadAnswer(q.id, rec);
       haptic("success");
       onAttempt(a);
     } catch (e) {
@@ -55,7 +62,10 @@ export default function QuestionScreen({ me, id, onAttempt, onPaywall }: {
   return (
     <div>
       <div className="card question-card">
-        <div className="muted small">{t("question")} {q.number}{q.topic ? ` · ${q.topic}` : ""}</div>
+        <div className="row-between">
+          <span className="muted small">{t("question")} {q.number}{q.topic ? ` · ${q.topic}` : ""}</span>
+          <button className={`star ${fav ? "on" : ""}`} aria-label={t("favourite")} onClick={toggleFav}>{fav ? "★" : "☆"}</button>
+        </div>
         <p className="question-text">{q.text}</p>
         {q.question_audio && <AuthAudio id={q.question_audio} label={t("listen_question")} />}
       </div>

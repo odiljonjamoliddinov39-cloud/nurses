@@ -16,6 +16,10 @@ Access is paid by card transfer and approved by hand. See [ARCHITECTURE.md](ARCH
 - **Learner (Mini App):** course and question list with topics, free demo questions, voice recording
   (up to 3 min), self-check or AI grading, results history, profile with language (uz/ru/en),
   paywall with card details and receipt upload, payment status.
+- **Learner comfort:** question filters (all / new / weak below 3 / favourites / number range), favourites,
+  "Continue" to the first unanswered question, mock exam (3–5 random questions, one total timer, no hints,
+  combined score), listen mode (question + model answer audio as a playlist, 0.75×–1.5×, lock-screen
+  controls), statistics (progress, average, daily streak, 14-day trend, weakest topics).
 - **Admin:** dashboard, payment requests (receipt, approve/reject with reason), users (grant/extend
   access, cancel, block), courses and topics, questions with key points and audio, Excel
   import/export, plans, answer review with teacher score, settings, audit log.
@@ -35,5 +39,5 @@ Tests: `cd backend && TEST_DATABASE_URL=postgresql+asyncpg://user@localhost:5432
 (API tests need an empty PostgreSQL database; unit tests run without one).
 
 ## Not built yet (after MVP)
-Mock exam, learn/test modes, statistics charts, favourites, broadcasts, reports, promo codes,
+Test mode (multiple choice; needs MCQ editing in the admin panel), broadcasts, reports, promo codes,
 Click/Payme auto-payments, more admin roles, AI voice generation (TTS) in the admin panel.

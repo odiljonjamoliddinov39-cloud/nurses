@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api } from "../api";
 import { fmtDate, useT } from "../i18n";
 import { ErrorBox, ScoreChip, Spinner } from "../ui";
+import StatsCard from "./Stats";
 
 interface Res {
   stats: { answered_questions: number; average: number | null; attempts: number };
@@ -18,13 +19,8 @@ export default function Results({ onOpen }: { onOpen: (attemptId: number) => voi
   if (!data) return <Spinner />;
   return (
     <div>
-      <div className="card">
-        <div className="stats">
-          <div><b>{data.stats.answered_questions}</b><span>{t("answered")}</span></div>
-          <div><b>{data.stats.average ?? "—"}</b><span>{t("average")}</span></div>
-          <div><b>{data.stats.attempts}</b><span>{t("attempts")}</span></div>
-        </div>
-      </div>
+      <StatsCard />
+      {data.items.length > 0 && <div className="section-title"><span>{t("attempts")}</span><span>{data.stats.attempts}</span></div>}
       {data.items.length === 0 && <div className="card muted">{t("results_empty")}</div>}
       <ul className="qlist">
         {data.items.map((it) => (
