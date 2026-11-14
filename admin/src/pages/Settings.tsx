@@ -1,3 +1,4 @@
+import { t, tx } from "../i18n";
 import { useEffect, useState } from "react";
 import { api, post, put } from "../api";
 import { Err, Loading, Page } from "../ui";
@@ -41,21 +42,21 @@ function PasswordCard() {
     setBusy(true); setMsg(""); setOk("");
     try {
       await post("/admin/password", { current, new: next });
-      setOk("Password changed. Use the new one next time you sign in."); setCurrent(""); setNext(""); setAgain(""); setIsSet(true);
+      setOk(t("Password changed. Use the new one next time you sign in.")); setCurrent(""); setNext(""); setAgain(""); setIsSet(true);
     } catch (e) { setMsg((e as Error).message); } finally { setBusy(false); }
   };
   return (
     <div className="form panel" style={{ maxWidth: 640, marginBottom: 20 }}>
-      <h3 style={{ margin: 0 }}>Admin password</h3>
-      <p className="muted small">{isSet === false ? "No password is set yet. Choose one (at least 10 characters)." : "Change the password you use to sign in to this panel. At least 10 characters."}</p>
-      {isSet && <label>Current password<input type="password" value={current} autoComplete="current-password" onChange={(e) => setCurrent(e.target.value)} /></label>}
-      <label>New password<input type="password" value={next} autoComplete="new-password" onChange={(e) => setNext(e.target.value)} /></label>
-      <label>New password again<input type="password" value={again} autoComplete="new-password" onChange={(e) => setAgain(e.target.value)} />
-        {mismatch && <span className="error-text small">The two passwords are different.</span>}</label>
+      <h3 style={{ margin: 0 }}>{t("Admin password")}</h3>
+      <p className="muted small">{isSet === false ? t("No password is set yet. Choose one (at least 10 characters).") : t("Change the password you use to sign in to this panel. At least 10 characters.")}</p>
+      {isSet && <label>{t("Current password")}<input type="password" value={current} autoComplete="current-password" onChange={(e) => setCurrent(e.target.value)} /></label>}
+      <label>{t("New password")}<input type="password" value={next} autoComplete="new-password" onChange={(e) => setNext(e.target.value)} /></label>
+      <label>{t("New password again")}<input type="password" value={again} autoComplete="new-password" onChange={(e) => setAgain(e.target.value)} />
+        {mismatch && <span className="error-text small">{t("The two passwords are different.")}</span>}</label>
       <Err msg={msg} />
       {ok && <div className="alert ok">{ok}</div>}
-      <button className="btn" disabled={busy || next.length < 10 || next !== again || (isSet === true && !current)} onClick={save}>Change password</button>
-      <p className="muted small">Forgot it? Send <code>/password</code> to your bot for a new random one.</p>
+      <button className="btn" disabled={busy || next.length < 10 || next !== again || (isSet === true && !current)} onClick={save}>{t("Change password")}</button>
+      <p className="muted small">{tx("Forgot it? Send {cmd} to your bot for a new random one.", { cmd: <code>/password</code> })}</p>
     </div>
   );
 }
@@ -67,11 +68,11 @@ export default function Settings() {
   useEffect(() => { api<S>("/admin/settings").then(setS).catch((e) => setError(e.message)); }, []);
   const save = async () => {
     setError(""); setSaved("");
-    try { await put("/admin/settings", s); setSaved("Saved."); } catch (e) { setError((e as Error).message); }
+    try { await put("/admin/settings", s); setSaved(t("Saved.")); } catch (e) { setError((e as Error).message); }
   };
   if (!s) return error ? <Err msg={error} /> : <Loading />;
   return (
-    <Page title="Settings">
+    <Page title={t("Settings")}>
       <PasswordCard />
       <div className="form panel" style={{ maxWidth: 640 }}>
         {FIELDS.map((f) => {
@@ -79,19 +80,19 @@ export default function Settings() {
           const v = s[f.key] ?? "";
           const set = (val: string | number) => setS({ ...s, [f.key]: val });
           return (
-            <label key={f.key}>{f.label}
+            <label key={f.key}>{t(f.label)}
               {f.type === "textarea" ? <textarea rows={3} value={v} onChange={(e) => set(e.target.value)} />
                 : f.type === "select" ? <select value={v} onChange={(e) => set(e.target.value)}>
-                  {f.options!.map(([o, l]) => <option key={o} value={o}>{l}</option>)}</select>
+                  {f.options!.map(([o, l]) => <option key={o} value={o}>{t(l)}</option>)}</select>
                 : <input type={f.type === "number" ? "number" : f.type === "password" ? "password" : "text"} value={v}
                     onChange={(e) => set(f.type === "number" ? +e.target.value : e.target.value)} autoComplete="off" />}
-              {f.help && <span className="muted small">{f.help}</span>}
+              {f.help && <span className="muted small">{t(f.help)}</span>}
             </label>
           );
         })}
         <Err msg={error} />
         {saved && <div className="alert ok">{saved}</div>}
-        <button className="btn" onClick={save}>Save settings</button>
+        <button className="btn" onClick={save}>{t("Save settings")}</button>
       </div>
     </Page>
   );

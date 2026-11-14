@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import { useState } from "react";
 import { api, del, fmtDay, fmtSum, post, put } from "../api";
 import { Badge, Err, Loading, Modal, Page, useLoad } from "../ui";
@@ -16,7 +17,7 @@ export default function Promos() {
   const [msg, setMsg] = useState("");
 
   const remove = async (p: Promo) => {
-    if (!confirm(`Delete promo code ${p.code}?`)) return;
+    if (!confirm(t("Delete promo code {code}?", { code: p.code }))) return;
     try { await del(`/admin/promos/${p.id}`); reload(); } catch (e) { setMsg((e as Error).message); }
   };
   const toggle = async (p: Promo) => {
@@ -27,24 +28,24 @@ export default function Promos() {
   };
 
   return (
-    <Page title="Promo codes" actions={<button className="btn" onClick={() => setEdit({ kind: "percent", value: 10, is_active: true, used_count: 0 })}>+ New promo code</button>}>
+    <Page title={t("Promo codes")} actions={<button className="btn" onClick={() => setEdit({ kind: "percent", value: 10, is_active: true, used_count: 0 })}>{t("+ New promo code")}</button>}>
       <Err msg={error || msg} />
-      <p className="muted small">Users enter a code on the payment screen. The discount is taken off the plan price, so the payment request shows the reduced amount. A use is returned if the payment is rejected.</p>
-      {!data ? <Loading /> : data.length === 0 ? <div className="empty">No promo codes yet.</div> : (
+      <p className="muted small">{t("Users enter a code on the payment screen. The discount is taken off the plan price, so the payment request shows the reduced amount. A use is returned if the payment is rejected.")}</p>
+      {!data ? <Loading /> : data.length === 0 ? <div className="empty">{t("No promo codes yet.")}</div> : (
         <table>
-          <thead><tr><th>Code</th><th>Discount</th><th>Used</th><th>Expires</th><th>Status</th><th /></tr></thead>
+          <thead><tr><th>{t("Code")}</th><th>{t("Discount")}</th><th>{t("Used")}</th><th>{t("Expires")}</th><th>{t("Status")}</th><th /></tr></thead>
           <tbody>
             {data.map((p) => (
               <tr key={p.id}>
                 <td><b className="mono">{p.code}</b></td>
                 <td>{describe(p)}</td>
-                <td>{p.used_count}{p.max_uses != null ? ` / ${p.max_uses}` : " (no limit)"}</td>
-                <td>{p.expires_at ? fmtDay(p.expires_at) : "never"}</td>
+                <td>{p.used_count}{p.max_uses != null ? ` / ${p.max_uses}` : " " + t("(no limit)")}</td>
+                <td>{p.expires_at ? fmtDay(p.expires_at) : t("never")}</td>
                 <td><Badge value={state(p)} /></td>
                 <td className="row gap">
-                  <button className="btn small secondary" onClick={() => setEdit(p)}>Edit</button>
-                  <button className="btn small secondary" onClick={() => toggle(p)}>{p.is_active ? "Switch off" : "Switch on"}</button>
-                  {!p.used_count && <button className="btn small danger" onClick={() => remove(p)}>Delete</button>}
+                  <button className="btn small secondary" onClick={() => setEdit(p)}>{t("Edit")}</button>
+                  <button className="btn small secondary" onClick={() => toggle(p)}>{p.is_active ? t("Switch off") : t("Switch on")}</button>
+                  {!p.used_count && <button className="btn small danger" onClick={() => remove(p)}>{t("Delete")}</button>}
                 </td>
               </tr>
             ))}
@@ -81,27 +82,27 @@ function PromoModal({ p, onClose, onSaved }: { p: Partial<Promo>; onClose: () =>
   };
 
   return (
-    <Modal title={p.id ? `Promo code ${p.code}` : "New promo code"} onClose={onClose}>
+    <Modal title={p.id ? t("Promo code {code}", { code: p.code ?? "" }) : t("New promo code")} onClose={onClose}>
       <div className="form">
-        <label>Code *<input value={code} disabled={used} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="YOZ-20" maxLength={32} /></label>
+        <label>{t("Code *")}<input value={code} disabled={used} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="YOZ-20" maxLength={32} /></label>
         <div className="row gap">
-          <label style={{ flex: 1 }}>Type
+          <label style={{ flex: 1 }}>{t("Type")}
             <select value={kind} disabled={used} onChange={(e) => setKind(e.target.value as "percent" | "fixed")}>
-              <option value="percent">Percent off</option><option value="fixed">Fixed amount off (UZS)</option>
+              <option value="percent">{t("Percent off")}</option><option value="fixed">{t("Fixed amount off (UZS)")}</option>
             </select>
           </label>
-          <label style={{ flex: 1 }}>{kind === "percent" ? "Percent (1–99)" : "Amount, UZS"}
+          <label style={{ flex: 1 }}>{kind === "percent" ? t("Percent (1–99)") : t("Amount, UZS")}
             <input type="number" min={1} max={kind === "percent" ? 99 : undefined} value={value} disabled={used} onChange={(e) => setValue(+e.target.value)} />
           </label>
         </div>
-        {used && <p className="muted small">Already used {p.used_count}×: the code, type and amount are locked. You can still change the limit, expiry and on/off.</p>}
+        {used && <p className="muted small">{t("Already used {n}×: the code, type and amount are locked. You can still change the limit, expiry and on/off.", { n: p.used_count ?? 0 })}</p>}
         <div className="row gap">
-          <label style={{ flex: 1 }}>Usage limit (empty = unlimited)<input type="number" min={Math.max(1, p.used_count ?? 1)} value={max} onChange={(e) => setMax(e.target.value)} /></label>
-          <label style={{ flex: 1 }}>Valid until (empty = no end)<input type="date" value={expires} onChange={(e) => setExpires(e.target.value)} /></label>
+          <label style={{ flex: 1 }}>{t("Usage limit (empty = unlimited)")}<input type="number" min={Math.max(1, p.used_count ?? 1)} value={max} onChange={(e) => setMax(e.target.value)} /></label>
+          <label style={{ flex: 1 }}>{t("Valid until (empty = no end)")}<input type="date" value={expires} onChange={(e) => setExpires(e.target.value)} /></label>
         </div>
-        <label className="check"><input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} /> Active</label>
+        <label className="check"><input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} /> {t("Active")}</label>
         <Err msg={msg} />
-        <div className="row gap"><button className="btn" onClick={save} disabled={busy || !code.trim() || !value}>Save</button></div>
+        <div className="row gap"><button className="btn" onClick={save} disabled={busy || !code.trim() || !value}>{t("Save")}</button></div>
       </div>
     </Modal>
   );

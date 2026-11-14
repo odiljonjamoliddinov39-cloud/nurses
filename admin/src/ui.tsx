@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { fileUrl } from "./api";
+import { t } from "./i18n";
 
 export function useLoad<T>(fn: () => Promise<T>, deps: unknown[] = []) {
   const [data, setData] = useState<T | null>(null);
@@ -13,13 +14,13 @@ export function useLoad<T>(fn: () => Promise<T>, deps: unknown[] = []) {
   return { data, error, loading, reload, setData };
 }
 
-export function Loading() { return <div className="muted pad">Loading…</div>; }
-export function Err({ msg }: { msg: string }) { return msg ? <div className="alert error">{msg}</div> : null; }
+export function Loading() { return <div className="muted pad">{t("Loading…")}</div>; }
+export function Err({ msg }: { msg: string }) { return msg ? <div className="alert error">{t(msg)}</div> : null; }
 
 export function Page({ title, actions, children }: { title: string; actions?: ReactNode; children: ReactNode }) {
   return (
     <div>
-      <div className="page-head"><h1>{title}</h1><div className="row gap">{actions}</div></div>
+      <div className="page-head"><h1>{t(title)}</h1><div className="row gap">{actions}</div></div>
       {children}
     </div>
   );
@@ -34,7 +35,7 @@ export function Modal({ title, onClose, children, wide }: { title: string; onClo
   return (
     <div className="modal-bg" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className={`modal ${wide ? "wide" : ""}`}>
-        <div className="modal-head"><h2>{title}</h2><button className="icon" onClick={onClose}>✕</button></div>
+        <div className="modal-head"><h2>{t(title)}</h2><button className="icon" onClick={onClose}>✕</button></div>
         {children}
       </div>
     </div>
@@ -50,8 +51,8 @@ export function AuthImage({ id }: { id: number }) {
       setType(b.type); setSrc(u);
     }).catch(() => setSrc(null));
   }, [id]);
-  if (!src) return <div className="muted">Loading receipt…</div>;
-  if (type === "application/pdf") return <a href={src} target="_blank" rel="noreferrer">Open PDF receipt</a>;
+  if (!src) return <div className="muted">{t("Loading receipt…")}</div>;
+  if (type === "application/pdf") return <a href={src} target="_blank" rel="noreferrer">{t("Open PDF receipt")}</a>;
   return <a href={src} target="_blank" rel="noreferrer"><img className="receipt" src={src} alt="receipt" /></a>;
 }
 
@@ -62,7 +63,7 @@ export function AuthAudio({ id }: { id: number }) {
 }
 
 export function Badge({ value }: { value: string }) {
-  return <span className={`badge b-${value}`}>{value}</span>;
+  return <span className={`badge b-${value}`}>{t(value)}</span>;
 }
 
 export function Score({ v }: { v: number | null | undefined }) {

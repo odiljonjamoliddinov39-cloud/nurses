@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import { useState } from "react";
 import { api, download, fmtSum } from "../api";
 import { Err, Loading, Page, Score, useLoad } from "../ui";
@@ -26,32 +27,32 @@ export default function Reports() {
 
   const max = Math.max(1, ...(data?.revenue_by_day.map((d) => d.amount) ?? [0]));
   return (
-    <Page title="Reports" actions={
+    <Page title={t("Reports")} actions={
       <>
         <select value={days} onChange={(e) => setDays(+e.target.value)}>
-          {PERIODS.map((p) => <option key={p} value={p}>Last {p} days</option>)}
+          {PERIODS.map((p) => <option key={p} value={p}>{t("Last {n} days", { n: p })}</option>)}
         </select>
-        <button className="btn secondary" onClick={exportXlsx}>Export Excel</button>
+        <button className="btn secondary" onClick={exportXlsx}>{t("Export Excel")}</button>
       </>
     }>
       <Err msg={error || msg} />
       {!data ? <Loading /> : (
         <>
           <div className="tiles">
-            <div className="tile"><div className="tile-value">{fmtSum(data.totals.revenue)}</div><div className="tile-label">Revenue, UZS</div></div>
-            <div className="tile"><div className="tile-value">{data.totals.payments}</div><div className="tile-label">Approved payments</div></div>
-            <div className="tile"><div className="tile-value">{fmtSum(data.totals.average_payment)}</div><div className="tile-label">Average payment, UZS</div></div>
-            <div className="tile"><div className="tile-value">{data.totals.answers}</div><div className="tile-label">Answers recorded</div></div>
-            <div className="tile"><div className="tile-value">{data.new_vs_renewed.new.count} / {data.new_vs_renewed.renewed.count}</div><div className="tile-label">New / renewed</div></div>
-            <div className="tile"><div className="tile-value">{data.conversion.paying} of {data.conversion.new_users}</div>
-              <div className="tile-label">New users who paid ({Math.round(data.conversion.rate * 100)}%)</div></div>
+            <div className="tile"><div className="tile-value">{fmtSum(data.totals.revenue)}</div><div className="tile-label">{t("Revenue, UZS")}</div></div>
+            <div className="tile"><div className="tile-value">{data.totals.payments}</div><div className="tile-label">{t("Approved payments")}</div></div>
+            <div className="tile"><div className="tile-value">{fmtSum(data.totals.average_payment)}</div><div className="tile-label">{t("Average payment, UZS")}</div></div>
+            <div className="tile"><div className="tile-value">{data.totals.answers}</div><div className="tile-label">{t("Answers recorded")}</div></div>
+            <div className="tile"><div className="tile-value">{data.new_vs_renewed.new.count} / {data.new_vs_renewed.renewed.count}</div><div className="tile-label">{t("New / renewed")}</div></div>
+            <div className="tile"><div className="tile-value">{t("{a} of {b}", { a: data.conversion.paying, b: data.conversion.new_users })}</div>
+              <div className="tile-label">{t("New users who paid")} ({Math.round(data.conversion.rate * 100)}%)</div></div>
           </div>
 
-          <h3>Revenue by day</h3>
+          <h3>{t("Revenue by day")}</h3>
           <div className="card">
             <div className="bars" data-testid="revenue-bars">
               {data.revenue_by_day.map((d) => (
-                <div key={d.date} className="bar-col" title={`${d.date}: ${fmtSum(d.amount)} UZS, ${d.count} payments`}>
+                <div key={d.date} className="bar-col" title={`${d.date}: ${fmtSum(d.amount)} UZS, ${d.count} ${t("payments")}`}>
                   <i style={{ height: d.amount ? `${Math.max(4, (d.amount / max) * 100)}%` : "2px" }} className={d.amount ? "" : "zero"} />
                 </div>
               ))}
@@ -61,19 +62,19 @@ export default function Reports() {
 
           <div className="row gap wrap top">
             <div style={{ flex: 1, minWidth: 320 }}>
-              <h3>By plan</h3>
-              {data.by_plan.length === 0 ? <div className="empty">No payments in this period.</div> : (
+              <h3>{t("By plan")}</h3>
+              {data.by_plan.length === 0 ? <div className="empty">{t("No payments in this period.")}</div> : (
                 <table>
-                  <thead><tr><th>Plan</th><th>Payments</th><th>Revenue, UZS</th></tr></thead>
+                  <thead><tr><th>{t("Plan")}</th><th>{t("Payments")}</th><th>{t("Revenue, UZS")}</th></tr></thead>
                   <tbody>{data.by_plan.map((p) => <tr key={p.plan}><td>{p.plan}</td><td>{p.count}</td><td>{fmtSum(p.amount)}</td></tr>)}</tbody>
                 </table>
               )}
             </div>
             <div style={{ flex: 1, minWidth: 320 }}>
-              <h3>Hardest questions</h3>
-              {data.hardest_questions.length === 0 ? <div className="empty">Needs at least 3 graded answers per question.</div> : (
+              <h3>{t("Hardest questions")}</h3>
+              {data.hardest_questions.length === 0 ? <div className="empty">{t("Needs at least 3 graded answers per question.")}</div> : (
                 <table>
-                  <thead><tr><th>#</th><th>Question</th><th>Avg</th><th>Answers</th></tr></thead>
+                  <thead><tr><th>#</th><th>{t("Question")}</th><th>{t("Avg")}</th><th>{t("Answers")}</th></tr></thead>
                   <tbody>{data.hardest_questions.map((q) => (
                     <tr key={q.number}><td>{q.number}</td><td className="clip">{q.text}</td><td><Score v={q.average} /></td><td>{q.attempts}</td></tr>
                   ))}</tbody>

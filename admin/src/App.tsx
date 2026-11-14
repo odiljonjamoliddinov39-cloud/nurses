@@ -1,3 +1,4 @@
+import { LangSwitch, t, tx } from "./i18n";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError, inTelegram, post, setToken, setUnauthorizedHandler } from "./api";
 import Attempts from "./pages/Attempts";
@@ -66,14 +67,14 @@ export default function App() {
     setState({ kind: "loading" });
     post<{ token: string }>("/admin/login-code", { code: value })
       .then(({ token }) => { setToken(token); setCode(""); window.location.hash = "/dashboard"; check(); })
-      .catch((e) => setState({ kind: "login", error: e instanceof ApiError ? e.message : `Sign-in failed: ${e.message}` }));
+      .catch((e) => setState({ kind: "login", error: e instanceof ApiError ? e.message : `${t("Sign-in failed:")} ${e.message}` }));
   }, [check]);
 
   const signInWithPassword = useCallback((value: string) => {
     setState({ kind: "loading" });
     post<{ token: string }>("/admin/login-password", { password: value })
       .then(({ token }) => { setToken(token); setPassword(""); window.location.hash = "/dashboard"; check(); })
-      .catch((e) => setState({ kind: "login", error: e instanceof ApiError ? e.message : `Sign-in failed: ${e.message}` }));
+      .catch((e) => setState({ kind: "login", error: e instanceof ApiError ? e.message : `${t("Sign-in failed:")} ${e.message}` }));
   }, [check]);
 
   useEffect(() => {
@@ -83,34 +84,35 @@ export default function App() {
     else check();
   }, [check, signInWithCode]);
 
-  if (state.kind === "loading") return <div className="login"><p className="muted">Loading…</p></div>;
+  if (state.kind === "loading") return <div className="login"><p className="muted">{t("Loading…")}</p></div>;
   if (state.kind === "login") {
     return (
       <div className="login">
         <div className="login-card">
-          <h1>Admin sign-in</h1>
+          <LangSwitch className="login-lang" />
+          <h1>{t("Admin sign-in")}</h1>
           {inTelegram() ? (
-            <>{state.error && <p className="error-text">{state.error}</p>}<p>Not authorised.</p></>
+            <>{state.error && <p className="error-text">{t(state.error)}</p>}<p>{t("Not authorised.")}</p></>
           ) : (
             <>
               <form onSubmit={(e) => { e.preventDefault(); if (password) signInWithPassword(password); }}>
-                <label className="pw-label">Password
+                <label className="pw-label">{t("Password")}
                   <input className="pw-input" type="password" value={password} autoFocus autoComplete="current-password"
                     onChange={(e) => setPassword(e.target.value)} />
                 </label>
-                <button className="btn" type="submit" disabled={!password}>Sign in</button>
+                <button className="btn" type="submit" disabled={!password}>{t("Sign in")}</button>
               </form>
-              {state.error && <p className="error-text">{state.error}</p>}
-              <p className="muted small hint">First time, or forgot it? Open your bot in Telegram and send <code>/password</code>: it replies with a new password.</p>
+              {state.error && <p className="error-text">{t(state.error)}</p>}
+              <p className="muted small hint">{tx("First time, or forgot it? Open your bot in Telegram and send {cmd}: it replies with a new password.", { cmd: <code>/password</code> })}</p>
               <button className="link small" type="button" onClick={() => setShowCode(!showCode)}>
-                {showCode ? "Hide" : "Sign in with a one-time code from the bot instead"}
+                {showCode ? t("Hide") : t("Sign in with a one-time code from the bot instead")}
               </button>
               {showCode && (
                 <form onSubmit={(e) => { e.preventDefault(); if (code.trim()) signInWithCode(code.trim()); }}>
-                  <p className="muted small">Send <code>/admin</code> to the bot, then type the code it sends.</p>
+                  <p className="muted small">{tx("Send {cmd} to the bot, then type the code it sends.", { cmd: <code>/admin</code> })}</p>
                   <input className="code-input" value={code} autoComplete="off" autoCapitalize="characters" spellCheck={false}
                     placeholder="ABCD-EFGH" maxLength={16} onChange={(e) => setCode(e.target.value.toUpperCase())} />
-                  <button className="btn" type="submit" disabled={code.trim().length < 8}>Sign in with code</button>
+                  <button className="btn" type="submit" disabled={code.trim().length < 8}>{t("Sign in with code")}</button>
                 </form>
               )}
             </>
@@ -123,17 +125,18 @@ export default function App() {
   return (
     <div className="layout">
       <aside className={menu ? "open" : ""}>
-        <div className="brand">Oral Exam Trainer<span>Admin</span></div>
+        <div className="brand">{t("Oral Exam Trainer")}<span>{t("Admin")}</span></div>
         <nav>
           {PAGES.map((p) => (
             <a key={p.id} href={`#/${p.id}`} className={page === p.id ? "active" : ""} onClick={() => setMenu(false)}>
-              <span>{p.icon}</span>{p.label}
+              <span>{p.icon}</span>{t(p.label)}
             </a>
           ))}
         </nav>
+        <LangSwitch className="side-lang" />
         <div className="who">
           {state.me.full_name ?? state.me.telegram_id}
-          {!inTelegram() && <button className="link" onClick={() => { setToken(null); setState({ kind: "login" }); }}>Sign out</button>}
+          {!inTelegram() && <button className="link" onClick={() => { setToken(null); setState({ kind: "login" }); }}>{t("Sign out")}</button>}
         </div>
       </aside>
       <main>

@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import { useState } from "react";
 import { api, fmtSum, nameOf, post, put, type I18n } from "../api";
 import { Err, Loading, Modal, Page, useLoad } from "../ui";
@@ -24,31 +25,31 @@ export default function Plans() {
   const cname = (id: number) => nameOf(courses.data?.find((c) => c.id === id)?.name);
 
   return (
-    <Page title="Plans" actions={<button className="btn" onClick={() => setEdit({ ...EMPTY })}>+ New plan</button>}>
+    <Page title={t("Plans")} actions={<button className="btn" onClick={() => setEdit({ ...EMPTY })}>{t("+ New plan")}</button>}>
       <Err msg={error} />
-      {!data ? <Loading /> : data.length === 0 ? <div className="empty">No plans yet. Users can't subscribe until you add one.</div> : (
+      {!data ? <Loading /> : data.length === 0 ? <div className="empty">{t("No plans yet. Users can't subscribe until you add one.")}</div> : (
         <table>
-          <thead><tr><th>Name</th><th>Days</th><th>Price</th><th>Courses</th><th>Shown</th><th /></tr></thead>
+          <thead><tr><th>{t("Name")}</th><th>{t("Days")}</th><th>{t("Price")}</th><th>{t("Courses")}</th><th>{t("Shown")}</th><th /></tr></thead>
           <tbody>
             {data.map((p) => (
               <tr key={p.id}>
                 <td><b>{p.name}</b></td><td>{p.days}</td><td>{fmtSum(p.price_uzs)} UZS</td>
-                <td>{p.course_ids.length ? p.course_ids.map(cname).join(", ") : <span className="muted">All courses</span>}</td>
-                <td>{p.is_active ? "Yes" : "Hidden"}</td>
-                <td><button className="btn small" onClick={() => setEdit({ ...p })}>Edit</button></td>
+                <td>{p.course_ids.length ? p.course_ids.map(cname).join(", ") : <span className="muted">{t("All courses")}</span>}</td>
+                <td>{p.is_active ? t("Yes") : t("Hidden")}</td>
+                <td><button className="btn small" onClick={() => setEdit({ ...p })}>{t("Edit")}</button></td>
               </tr>
             ))}
           </tbody>
         </table>
       )}
       {edit && (
-        <Modal title={edit.id ? "Edit plan" : "New plan"} onClose={() => setEdit(null)}>
+        <Modal title={edit.id ? t("Edit plan") : t("New plan")} onClose={() => setEdit(null)}>
           <div className="form">
-            <label>Name<input value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} placeholder="1 oy" /></label>
-            <label>Days<input type="number" min={1} value={edit.days} onChange={(e) => setEdit({ ...edit, days: +e.target.value })} /></label>
-            <label>Price, UZS<input type="number" min={0} value={edit.price_uzs} onChange={(e) => setEdit({ ...edit, price_uzs: +e.target.value })} /></label>
+            <label>{t("Name")}<input value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} placeholder="1 oy" /></label>
+            <label>{t("Days")}<input type="number" min={1} value={edit.days} onChange={(e) => setEdit({ ...edit, days: +e.target.value })} /></label>
+            <label>{t("Price, UZS")}<input type="number" min={0} value={edit.price_uzs} onChange={(e) => setEdit({ ...edit, price_uzs: +e.target.value })} /></label>
             <fieldset>
-              <legend>Courses (none = all courses)</legend>
+              <legend>{t("Courses (none = all courses)")}</legend>
               {courses.data?.map((c) => (
                 <label key={c.id} className="check">
                   <input type="checkbox" checked={edit.course_ids.includes(c.id)} onChange={(e) => setEdit({
@@ -58,9 +59,9 @@ export default function Plans() {
               ))}
             </fieldset>
             <label className="check"><input type="checkbox" checked={edit.is_active}
-              onChange={(e) => setEdit({ ...edit, is_active: e.target.checked })} /> Shown to users</label>
+              onChange={(e) => setEdit({ ...edit, is_active: e.target.checked })} /> {t("Shown to users")}</label>
             <Err msg={msg} />
-            <button className="btn" onClick={save} disabled={!edit.name || edit.days < 1}>Save</button>
+            <button className="btn" onClick={save} disabled={!edit.name || edit.days < 1}>{t("Save")}</button>
           </div>
         </Modal>
       )}

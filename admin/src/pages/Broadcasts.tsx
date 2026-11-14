@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import { useEffect, useState } from "react";
 import { api, del, fmtDate, nameOf, post, put, type I18n } from "../api";
 import { Badge, Err, Loading, Modal, Page, useLoad } from "../ui";
@@ -13,7 +14,7 @@ const SEGMENTS: [string, string][] = [
   ["all", "Everyone"], ["subscribers", "Active subscribers"], ["expired", "Expired subscribers"], ["guests", "Guests (never subscribed)"],
 ];
 const segmentLabel = (s: string, courses: CourseLite[]) =>
-  SEGMENTS.find(([k]) => k === s)?.[1] ?? (s.startsWith("course:") ? `Course: ${nameOf(courses.find((c) => c.id === +s.slice(7))?.name)}` : s);
+  SEGMENTS.map(([k, l]) => [k, t(l)]).find(([k]) => k === s)?.[1] ?? (s.startsWith("course:") ? `${t("Course")}: ${nameOf(courses.find((c) => c.id === +s.slice(7))?.name)}` : s);
 
 /** value for <input type="datetime-local"> in the admin's own time zone */
 const toLocalInput = (iso: string | null) => {
@@ -37,35 +38,35 @@ export default function Broadcasts() {
   }, [data]); // eslint-disable-line
 
   const sendNow = async (b: B) => {
-    if (!confirm(`Send this message now to "${segmentLabel(b.segment, courses.data ?? [])}"? It cannot be undone.`)) return;
+    if (!confirm(t("Send this message now to \"{to}\"? It cannot be undone.", { to: segmentLabel(b.segment, courses.data ?? []) }))) return;
     setMsg("");
     try { await post(`/admin/broadcasts/${b.id}/send`); reload(); } catch (e) { setMsg((e as Error).message); }
   };
   const remove = async (b: B) => {
-    if (!confirm("Delete this broadcast?")) return;
+    if (!confirm(t("Delete this broadcast?"))) return;
     try { await del(`/admin/broadcasts/${b.id}`); reload(); } catch (e) { setMsg((e as Error).message); }
   };
 
   return (
-    <Page title="Broadcasts" actions={<button className="btn" onClick={() => setEdit({ text: "", segment: "all", button: null })}>+ New broadcast</button>}>
+    <Page title={t("Broadcasts")} actions={<button className="btn" onClick={() => setEdit({ text: "", segment: "all", button: null })}>{t("+ New broadcast")}</button>}>
       <Err msg={error || msg} />
-      {!data ? <Loading /> : data.length === 0 ? <div className="empty">No broadcasts yet. Write one to message your users through the bot.</div> : (
+      {!data ? <Loading /> : data.length === 0 ? <div className="empty">{t("No broadcasts yet. Write one to message your users through the bot.")}</div> : (
         <table>
-          <thead><tr><th>Message</th><th>To</th><th>Status</th><th>Delivered</th><th>When</th><th /></tr></thead>
+          <thead><tr><th>{t("Message")}</th><th>{t("To")}</th><th>{t("Status")}</th><th>{t("Delivered")}</th><th>{t("When")}</th><th /></tr></thead>
           <tbody>
             {data.map((b) => (
               <tr key={b.id}>
                 <td className="clip">{b.image ? "🖼 " : ""}{b.text}</td>
                 <td>{segmentLabel(b.segment, courses.data ?? [])}</td>
                 <td><Badge value={b.status} /></td>
-                <td>{b.status === "draft" || b.status === "scheduled" ? "—" : `${b.sent} / ${b.total}${b.failed ? ` (${b.failed} failed)` : ""}`}</td>
+                <td>{b.status === "draft" || b.status === "scheduled" ? "—" : `${b.sent} / ${b.total}${b.failed ? ` (${t("{n} failed", { n: b.failed })})` : ""}`}</td>
                 <td>{fmtDate(b.sent_at ?? b.scheduled_at ?? b.created_at)}</td>
                 <td className="row gap">
                   {(b.status === "draft" || b.status === "scheduled") && (
                     <>
-                      <button className="btn small" onClick={() => sendNow(b)}>Send now</button>
-                      <button className="btn small secondary" onClick={() => setEdit(b)}>Edit</button>
-                      <button className="btn small danger" onClick={() => remove(b)}>Delete</button>
+                      <button className="btn small" onClick={() => sendNow(b)}>{t("Send now")}</button>
+                      <button className="btn small secondary" onClick={() => setEdit(b)}>{t("Edit")}</button>
+                      <button className="btn small danger" onClick={() => remove(b)}>{t("Delete")}</button>
                     </>
                   )}
                 </td>
@@ -127,10 +128,10 @@ function BroadcastModal({ b, courses, onClose, onSaved }: { b: Partial<B>; cours
     try { await fn(); } catch (e) { setMsg((e as Error).message); } finally { setBusy(false); }
   };
   const save = () => run(async () => {
-    if (when === "later" && !at) throw new Error("Pick the date and time to send.");
+    if (when === "later" && !at) throw new Error(t("Pick the date and time to send."));
     const id = await persist();
     if (when === "now") {
-      if (!confirm(`Send this message now to ${count ?? "?"} people? It cannot be undone.`)) { onSaved(); return; }
+      if (!confirm(t("Send this message now to {n} people? It cannot be undone.", { n: count ?? "?" }))) { onSaved(); return; }
       await post(`/admin/broadcasts/${id}/send`);
     }
     onSaved();
@@ -138,57 +139,57 @@ function BroadcastModal({ b, courses, onClose, onSaved }: { b: Partial<B>; cours
   const test = () => run(async () => {
     const id = await persist();
     const r = await post<{ ok: boolean }>(`/admin/broadcasts/${id}/test`);
-    setNote(r.ok ? "Test message sent to your Telegram. A draft was saved." : "Telegram refused the test. Have you started the bot from your admin account? A draft was saved.");
+    setNote(r.ok ? t("Test message sent to your Telegram. A draft was saved.") : t("Telegram refused the test. Have you started the bot from your admin account? A draft was saved."));
   });
 
   return (
-    <Modal title={savedId ? "Edit broadcast" : "New broadcast"} onClose={onClose} wide>
+    <Modal title={savedId ? t("Edit broadcast") : t("New broadcast")} onClose={onClose} wide>
       <div className="form">
-        <label>Message *<textarea rows={6} maxLength={4000} value={text} onChange={(e) => setText(e.target.value)} placeholder="Plain text. Up to 4000 characters." /></label>
-        <div className="muted small">{text.length} / 4000{hasImage || file ? " · with an image: text over 1024 characters is sent as a separate message" : ""}</div>
+        <label>{t("Message *")}<textarea rows={6} maxLength={4000} value={text} onChange={(e) => setText(e.target.value)} placeholder={t("Plain text. Up to 4000 characters.")} /></label>
+        <div className="muted small">{text.length} / 4000{hasImage || file ? " · " + t("with an image: text over 1024 characters is sent as a separate message") : ""}</div>
 
         <div className="row gap wrap">
-          <label style={{ flex: 1, minWidth: 220 }}>Send to
+          <label style={{ flex: 1, minWidth: 220 }}>{t("Send to")}
             <select value={kind} onChange={(e) => setKind(e.target.value)}>
-              {SEGMENTS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
-              <option value="course">Users of a course…</option>
+              {SEGMENTS.map(([k, l]) => <option key={k} value={k}>{t(l)}</option>)}
+              <option value="course">{t("Users of a course…")}</option>
             </select>
           </label>
           {kind === "course" && (
-            <label style={{ flex: 1, minWidth: 220 }}>Course
+            <label style={{ flex: 1, minWidth: 220 }}>{t("Course")}
               <select value={courseId} onChange={(e) => setCourseId(+e.target.value)}>
                 {courses.map((c) => <option key={c.id} value={c.id}>{nameOf(c.name)}</option>)}
               </select>
             </label>
           )}
-          <div style={{ alignSelf: "flex-end" }} className="muted">{count == null ? "…" : <b>{count} {count === 1 ? "person" : "people"}</b>} will receive it</div>
+          <div style={{ alignSelf: "flex-end" }} className="muted">{count == null ? "…" : <b>{count} {count === 1 ? t("person") : t("people")}</b>} {t("will receive it")}</div>
         </div>
 
         <fieldset>
-          <legend>Button (optional)</legend>
+          <legend>{t("Button (optional)")}</legend>
           <div className="row gap">
-            <input style={{ width: 180 }} value={btnText} onChange={(e) => setBtnText(e.target.value)} placeholder="Button label" maxLength={60} />
-            <input style={{ flex: 1 }} value={btnUrl} onChange={(e) => setBtnUrl(e.target.value)} placeholder="https://… (link opened by the button)" />
+            <input style={{ width: 180 }} value={btnText} onChange={(e) => setBtnText(e.target.value)} placeholder={t("Button label")} maxLength={60} />
+            <input style={{ flex: 1 }} value={btnUrl} onChange={(e) => setBtnUrl(e.target.value)} placeholder={t("https://… (link opened by the button)")} />
           </div>
         </fieldset>
 
         <fieldset>
-          <legend>Image (optional)</legend>
+          <legend>{t("Image (optional)")}</legend>
           <div className="row gap wrap">
-            {(hasImage && !file) && <span>🖼 Image attached <button className="btn small danger" onClick={() => setHasImage(false)}>Remove</button></span>}
-            {file && <span>🖼 {file.name} <button className="btn small danger" onClick={() => setFile(null)}>Remove</button></span>}
-            <label className="btn small secondary">{hasImage || file ? "Replace" : "Choose image"}
+            {(hasImage && !file) && <span>{t("🖼 Image attached")} <button className="btn small danger" onClick={() => setHasImage(false)}>{t("Remove")}</button></span>}
+            {file && <span>🖼 {file.name} <button className="btn small danger" onClick={() => setFile(null)}>{t("Remove")}</button></span>}
+            <label className="btn small secondary">{hasImage || file ? t("Replace") : t("Choose image")}
               <input type="file" accept="image/*" hidden onChange={(e) => { if (e.target.files?.[0]) { setFile(e.target.files[0]); setHasImage(true); } }} />
             </label>
           </div>
         </fieldset>
 
         <fieldset>
-          <legend>When</legend>
+          <legend>{t("When")}</legend>
           <div className="row gap wrap">
-            <label className="check"><input type="radio" name="when" checked={when === "draft"} onChange={() => setWhen("draft")} /> Save as draft</label>
-            <label className="check"><input type="radio" name="when" checked={when === "now"} onChange={() => setWhen("now")} /> Send now</label>
-            <label className="check"><input type="radio" name="when" checked={when === "later"} onChange={() => setWhen("later")} /> Schedule</label>
+            <label className="check"><input type="radio" name="when" checked={when === "draft"} onChange={() => setWhen("draft")} /> {t("Save as draft")}</label>
+            <label className="check"><input type="radio" name="when" checked={when === "now"} onChange={() => setWhen("now")} /> {t("Send now")}</label>
+            <label className="check"><input type="radio" name="when" checked={when === "later"} onChange={() => setWhen("later")} /> {t("Schedule")}</label>
             {when === "later" && <input type="datetime-local" value={at} onChange={(e) => setAt(e.target.value)} />}
           </div>
         </fieldset>
@@ -196,8 +197,8 @@ function BroadcastModal({ b, courses, onClose, onSaved }: { b: Partial<B>; cours
         <Err msg={msg} />
         {note && <div className="alert">{note}</div>}
         <div className="row gap">
-          <button className="btn" onClick={save} disabled={busy || !text.trim()}>{when === "now" ? "Send" : when === "later" ? "Schedule" : "Save draft"}</button>
-          <button className="btn secondary" onClick={test} disabled={busy || !text.trim()}>Send test to me</button>
+          <button className="btn" onClick={save} disabled={busy || !text.trim()}>{when === "now" ? t("Send") : when === "later" ? t("Schedule") : t("Save draft")}</button>
+          <button className="btn secondary" onClick={test} disabled={busy || !text.trim()}>{t("Send test to me")}</button>
         </div>
       </div>
     </Modal>

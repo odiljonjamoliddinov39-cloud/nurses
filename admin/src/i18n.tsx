@@ -1,0 +1,457 @@
+import { Fragment, useEffect, useState, type ReactNode } from "react";
+
+// Admin UI languages: Uzbek (Latin), Russian, English. English is the source text: every t("...") key is the
+// English sentence, and a missing translation simply shows the English. `npm run check:i18n` lists gaps.
+export type Lang = "uz" | "ru" | "en";
+export const LANGS: { id: Lang; label: string }[] = [{ id: "uz", label: "UZ" }, { id: "ru", label: "RU" }, { id: "en", label: "EN" }];
+const KEY = "admin_lang";
+
+const detect = (): Lang => {
+  try {
+    const saved = localStorage.getItem(KEY);
+    if (saved === "uz" || saved === "ru" || saved === "en") return saved;
+  } catch { /* storage unavailable */ }
+  const n = (typeof navigator !== "undefined" ? navigator.language : "en").toLowerCase();
+  return n.startsWith("uz") ? "uz" : n.startsWith("ru") ? "ru" : "en";
+};
+
+let lang: Lang = detect();
+const listeners = new Set<() => void>();
+export const getLang = () => lang;
+export function setLang(next: Lang) {
+  lang = next;
+  try { localStorage.setItem(KEY, next); } catch { /* ignore */ }
+  document.documentElement.lang = next;
+  listeners.forEach((fn) => fn());
+}
+
+/** [uz, ru] for each English sentence. */
+const D: Record<string, [string, string]> = {
+  // navigation and shell
+  "Dashboard": ["Boshqaruv paneli", "Панель"],
+  "Payment requests": ["To'lov so'rovlari", "Заявки на оплату"],
+  "Users": ["Foydalanuvchilar", "Пользователи"],
+  "Courses & questions": ["Kurslar va savollar", "Курсы и вопросы"],
+  "Courses and questions": ["Kurslar va savollar", "Курсы и вопросы"],
+  "Plans": ["Tariflar", "Тарифы"],
+  "Promo codes": ["Promo-kodlar", "Промокоды"],
+  "Answers": ["Javoblar", "Ответы"],
+  "Broadcasts": ["Ommaviy xabarlar", "Рассылки"],
+  "Reports": ["Hisobotlar", "Отчёты"],
+  "Settings": ["Sozlamalar", "Настройки"],
+  "Logs": ["Jurnal", "Журнал"],
+  "Oral Exam Trainer": ["Og'zaki imtihon trenajyori", "Тренажёр устного экзамена"],
+  "Admin": ["Admin", "Админ"],
+  "Sign out": ["Chiqish", "Выйти"],
+  "Loading…": ["Yuklanmoqda…", "Загрузка…"],
+  "Loading receipt…": ["Chek yuklanmoqda…", "Загрузка чека…"],
+  "Open PDF receipt": ["PDF chekni ochish", "Открыть PDF-чек"],
+  "No receipt": ["Chek yo'q", "Чека нет"],
+  // sign-in
+  "Admin sign-in": ["Admin kirishi", "Вход для администратора"],
+  "Password": ["Parol", "Пароль"],
+  "Sign in": ["Kirish", "Войти"],
+  "Sign in with code": ["Kod bilan kirish", "Войти по коду"],
+  "Hide": ["Yashirish", "Скрыть"],
+  "First time, or forgot it? Open your bot in Telegram and send {cmd}: it replies with a new password.":
+    ["Birinchi marta yoki unutdingizmi? Telegramda botingizni ochib {cmd} yuboring: bot yangi parol yuboradi.",
+      "Впервые или забыли? Откройте бота в Telegram и отправьте {cmd}: он пришлёт новый пароль."],
+  "Sign in with a one-time code from the bot instead": ["Buning o'rniga botdan olingan bir martalik kod bilan kirish", "Войти по одноразовому коду из бота"],
+  "Send {cmd} to the bot, then type the code it sends.": ["Botga {cmd} yuboring va u yuborgan kodni kiriting.", "Отправьте боту {cmd} и введите присланный код."],
+  "Not authorised.": ["Ruxsat yo'q.", "Нет доступа."],
+  "This Telegram account is not an admin.": ["Bu Telegram akkaunti admin emas.", "Этот аккаунт Telegram не является администратором."],
+  "Session expired, sign in again.": ["Seans tugadi, qaytadan kiring.", "Сессия истекла, войдите снова."],
+  "Sign-in failed:": ["Kirib bo'lmadi:", "Не удалось войти:"],
+  "too many wrong codes: wait 5 minutes, then ask the bot for a new one": ["noto'g'ri kod juda ko'p kiritildi: 5 daqiqa kuting, so'ng botdan yangi kod so'rang", "слишком много неверных кодов: подождите 5 минут и запросите у бота новый"],
+  "wrong or expired code: send /admin to the bot for a new one": ["kod noto'g'ri yoki muddati o'tgan: yangi kod uchun botga /admin yuboring", "неверный или просроченный код: отправьте боту /admin, чтобы получить новый"],
+  "too many wrong passwords: wait 5 minutes (a code from the bot still works)": ["noto'g'ri parol juda ko'p kiritildi: 5 daqiqa kuting (botdan olingan kod ishlaydi)", "слишком много неверных паролей: подождите 5 минут (код из бота по-прежнему работает)"],
+  "too many wrong passwords: wait 5 minutes": ["noto'g'ri parol juda ko'p kiritildi: 5 daqiqa kuting", "слишком много неверных паролей: подождите 5 минут"],
+  "no password is set yet: send /password to the bot to get one": ["parol hali o'rnatilmagan: olish uchun botga /password yuboring", "пароль ещё не задан: отправьте боту /password, чтобы получить его"],
+  "wrong password (forgot it? send /password to the bot for a new one)": ["parol noto'g'ri (unutdingizmi? yangisi uchun botga /password yuboring)", "неверный пароль (забыли? отправьте боту /password за новым)"],
+  "the current password is wrong": ["joriy parol noto'g'ri", "текущий пароль неверный"],
+  "admin only": ["faqat adminlar uchun", "только для администраторов"],
+  // generic words
+  "All": ["Hammasi", "Все"],
+  "Name": ["Nomi", "Название"],
+  "Description": ["Tavsif", "Описание"],
+  "Edit": ["Tahrirlash", "Изменить"],
+  "Delete": ["O'chirish", "Удалить"],
+  "Save": ["Saqlash", "Сохранить"],
+  "Cancel": ["Bekor qilish", "Отменить"],
+  "Add": ["Qo'shish", "Добавить"],
+  "Remove": ["Olib tashlash", "Убрать"],
+  "Rename": ["Nomini o'zgartirish", "Переименовать"],
+  "Search": ["Qidirish", "Поиск"],
+  "Open": ["Ochish", "Открыть"],
+  "Upload": ["Yuklash", "Загрузить"],
+  "Replace": ["Almashtirish", "Заменить"],
+  "None": ["Yo'q", "Нет"],
+  "none": ["yo'q", "нет"],
+  "— none —": ["— yo'q —", "— нет —"],
+  "Yes": ["Ha", "Да"],
+  "Hidden": ["Yashirin", "Скрыт"],
+  "Active": ["Faol", "Активен"],
+  "Status": ["Holati", "Статус"],
+  "Details": ["Tafsilotlar", "Детали"],
+  "Action": ["Amal", "Действие"],
+  "Object": ["Obyekt", "Объект"],
+  "When": ["Qachon", "Когда"],
+  "Q": ["S", "В"],
+  "weight": ["vazni", "вес"],
+  "correct answer": ["to'g'ri javob", "правильный ответ"],
+  "(hidden)": ["(yashirin)", "(скрыт)"],
+  "Uzbek": ["O'zbekcha", "Узбекский"],
+  "Russian": ["Ruscha", "Русский"],
+  // statuses (Badge)
+  "pending": ["kutilmoqda", "ожидает"],
+  "approved": ["tasdiqlangan", "одобрено"],
+  "rejected": ["rad etilgan", "отклонено"],
+  "all": ["hammasi", "все"],
+  "active": ["faol", "активна"],
+  "expired": ["muddati tugagan", "истекла"],
+  "cancelled": ["bekor qilingan", "отменена"],
+  "canceled": ["bekor qilingan", "отменена"],
+  "subscriber": ["obunachi", "подписчик"],
+  "guest": ["mehmon", "гость"],
+  "blocked": ["bloklangan", "заблокирован"],
+  "off": ["o'chiq", "выкл."],
+  "used up": ["tugagan", "исчерпан"],
+  "draft": ["qoralama", "черновик"],
+  "scheduled": ["rejalashtirilgan", "запланирована"],
+  "sending": ["yuborilmoqda", "отправляется"],
+  "sent": ["yuborilgan", "отправлена"],
+  "done": ["tayyor", "готово"],
+  "graded": ["baholangan", "оценено"],
+  "uploaded": ["yuklangan", "загружено"],
+  "transcribing": ["matnga o'girilmoqda", "расшифровка"],
+  "grading": ["baholanmoqda", "оценивается"],
+  "failed": ["xato", "ошибка"],
+  "self": ["o'zi", "сам"],
+  "ai": ["AI", "ИИ"],
+  "teacher": ["o'qituvchi", "учитель"],
+  "Wrong amount": ["Summa noto'g'ri", "Неверная сумма"],
+  "Receipt unreadable": ["Chek o'qilmaydi", "Чек нечитаем"],
+  "Payment not found": ["To'lov topilmadi", "Платёж не найден"],
+  "Other": ["Boshqa", "Другое"],
+  // dashboard
+  "Pending payments": ["Kutilayotgan to'lovlar", "Платежи в ожидании"],
+  "Active subscribers": ["Faol obunachilar", "Активные подписчики"],
+  "Revenue this month": ["Shu oy daromadi", "Выручка за месяц"],
+  "Answers today": ["Bugungi javoblar", "Ответы сегодня"],
+  "Answers total": ["Jami javoblar", "Всего ответов"],
+  "Active questions": ["Faol savollar", "Активные вопросы"],
+  "AI tokens today": ["Bugungi AI tokenlar", "Токены ИИ сегодня"],
+  "{n} (+{today} today)": ["{n} (bugun +{today})", "{n} (сегодня +{today})"],
+  "Nothing yet.": ["Hozircha hech narsa yo'q.", "Пока ничего нет."],
+  // payments
+  "Pending": ["Kutilmoqda", "Ожидают"],
+  "Approved": ["Tasdiqlangan", "Одобренные"],
+  "Rejected": ["Rad etilgan", "Отклонённые"],
+  "No requests.": ["So'rovlar yo'q.", "Заявок нет."],
+  "No {status} requests.": ["{status} so'rovlar yo'q.", "Нет заявок со статусом «{status}»."],
+  "Payment {code}": ["To'lov {code}", "Платёж {code}"],
+  "Code": ["Kod", "Код"],
+  "User": ["Foydalanuvchi", "Пользователь"],
+  "Plan": ["Tarif", "Тариф"],
+  "Amount": ["Summa", "Сумма"],
+  "Sent": ["Yuborilgan", "Отправлено"],
+  "Phone": ["Telefon", "Телефон"],
+  "Telegram ID": ["Telegram ID", "Telegram ID"],
+  "✓ Approve and open access": ["✓ Tasdiqlash va ruxsat berish", "✓ Одобрить и открыть доступ"],
+  "Reject with reason:": ["Sabab bilan rad etish:", "Отклонить с причиной:"],
+  "The user gets a message in the bot either way.": ["Foydalanuvchi har ikki holatda ham botda xabar oladi.", "Пользователь получит сообщение в боте в любом случае."],
+  "Promo {code}: −{amount} UZS taken off the plan price. Check the receipt against this amount.": ["Promo {code}: tarif narxidan −{amount} UZS chegirildi. Chekni shu summa bilan solishtiring.", "Промокод {code}: из цены тарифа вычтено {amount} UZS. Сверяйте чек с этой суммой."],
+  // users
+  "Name, phone or Telegram ID": ["Ism, telefon yoki Telegram ID", "Имя, телефон или Telegram ID"],
+  "Subscribers": ["Obunachilar", "Подписчики"],
+  "Guests": ["Mehmonlar", "Гости"],
+  "Expired": ["Muddati tugagan", "Истёкшие"],
+  "Blocked": ["Bloklanganlar", "Заблокированные"],
+  "No users.": ["Foydalanuvchilar yo'q.", "Пользователей нет."],
+  "Access until": ["Ruxsat muddati", "Доступ до"],
+  "Joined": ["Qo'shilgan", "Присоединился"],
+  "Last seen": ["Oxirgi faollik", "Последний визит"],
+  "Language": ["Til", "Язык"],
+  "Give or extend access": ["Ruxsat berish yoki uzaytirish", "Выдать или продлить доступ"],
+  "Days": ["Kunlar", "Дни"],
+  "All courses": ["Barcha kurslar", "Все курсы"],
+  "Reason (optional)": ["Sabab (ixtiyoriy)", "Причина (необязательно)"],
+  "Grant": ["Berish", "Выдать"],
+  "Block": ["Bloklash", "Заблокировать"],
+  "Unblock": ["Blokdan chiqarish", "Разблокировать"],
+  "Block this user?": ["Bu foydalanuvchi bloklansinmi?", "Заблокировать этого пользователя?"],
+  "Cancel this subscription?": ["Bu obuna bekor qilinsinmi?", "Отменить эту подписку?"],
+  "Subscriptions": ["Obunalar", "Подписки"],
+  "Recent answers": ["So'nggi javoblar", "Последние ответы"],
+  "Gift": ["Sovg'a", "Подарок"],
+  // courses and questions
+  "Edit course": ["Kursni tahrirlash", "Изменить курс"],
+  "New course": ["Yangi kurs", "Новый курс"],
+  "+ New course": ["+ Yangi kurs", "+ Новый курс"],
+  "No courses yet. Create the first course, e.g. \"Hamshiralar og'zaki imtihoni\".": ["Hali kurslar yo'q. Birinchi kursni yarating, masalan: \"Hamshiralar og'zaki imtihoni\".", "Курсов пока нет. Создайте первый курс, например: «Hamshiralar og'zaki imtihoni»."],
+  "This course is hidden from users. Open \"Edit course\" and tick \"Published\" when it's ready.": ["Bu kurs foydalanuvchilardan yashirilgan. Tayyor bo'lganda \"Kursni tahrirlash\"ni ochib \"Chop etilgan\"ni belgilang.", "Этот курс скрыт от пользователей. Когда он будет готов, откройте «Изменить курс» и отметьте «Опубликован»."],
+  "Published (visible to users)": ["Chop etilgan (foydalanuvchilarga ko'rinadi)", "Опубликован (виден пользователям)"],
+  "Topics": ["Mavzular", "Темы"],
+  "Topic": ["Mavzu", "Тема"],
+  "Topic name": ["Mavzu nomi", "Название темы"],
+  "New topic": ["Yangi mavzu", "Новая тема"],
+  "Delete topic \"{name}\"? Its questions stay, without a topic.": ["\"{name}\" mavzusi o'chirilsinmi? Uning savollari mavzusiz qoladi.", "Удалить тему «{name}»? Её вопросы останутся без темы."],
+  "Questions": ["Savollar", "Вопросы"],
+  "Question": ["Savol", "Вопрос"],
+  "Question *": ["Savol *", "Вопрос *"],
+  "Question {n}": ["Savol {n}", "Вопрос {n}"],
+  "New question": ["Yangi savol", "Новый вопрос"],
+  "+ Question": ["+ Savol", "+ Вопрос"],
+  "Excel template": ["Excel shablon", "Шаблон Excel"],
+  "Import Excel": ["Excel import", "Импорт из Excel"],
+  "Export Excel": ["Excel eksport", "Экспорт в Excel"],
+  "Importing…": ["Import qilinmoqda…", "Импорт…"],
+  "Imported: {created} new, {updated} updated.": ["Import qilindi: {created} ta yangi, {updated} ta yangilandi.", "Импортировано: новых {created}, обновлено {updated}."],
+  "Import failed:": ["Import amalga oshmadi:", "Не удалось импортировать:"],
+  "Excel columns: {cols}. Key points go one per line; add {two} after a point to give it weight 2. Rows with an existing number are updated.": ["Excel ustunlari: {cols}. Asosiy fikrlar har qatorga bittadan yoziladi; fikr vazni 2 bo'lishi uchun undan keyin {two} qo'shing. Raqami mavjud qatorlar yangilanadi.", "Столбцы Excel: {cols}. Ключевые пункты пишутся по одному на строку; чтобы задать вес 2, добавьте {two} после пункта. Строки с существующим номером обновляются."],
+  "No questions yet. Add one or import an Excel file.": ["Hali savollar yo'q. Bittasini qo'shing yoki Excel faylini import qiling.", "Вопросов пока нет. Добавьте вопрос или импортируйте файл Excel."],
+  "Key points": ["Asosiy fikrlar", "Ключевые пункты"],
+  "Test": ["Test", "Тест"],
+  "Audio": ["Audio", "Аудио"],
+  "Number": ["Raqam", "Номер"],
+  "Model answer": ["Namunaviy javob", "Образцовый ответ"],
+  "Key points (what a good answer must mention; weight = importance)": ["Asosiy fikrlar (yaxshi javobda aytilishi kerak bo'lgan narsalar; vazn = muhimlik)", "Ключевые пункты (что должен упомянуть хороший ответ; вес = важность)"],
+  "Point {n}": ["Fikr {n}", "Пункт {n}"],
+  "+ Key point": ["+ Asosiy fikr", "+ Ключевой пункт"],
+  "Test mode (multiple choice, optional: leave empty to keep this question out of tests)": ["Test rejimi (variantli, ixtiyoriy: savol testlarga tushmasligi uchun bo'sh qoldiring)", "Режим теста (с вариантами, необязательно: оставьте пустым, чтобы вопрос не попадал в тесты)"],
+  "Option {n}": ["Variant {n}", "Вариант {n}"],
+  "+ Option": ["+ Variant", "+ Вариант"],
+  "Select the radio button next to the one correct option. 2 to 6 options. The explanation below is shown after the user answers.": ["To'g'ri variant yonidagi tugmani belgilang. 2 tadan 6 tagacha variant. Quyidagi izoh foydalanuvchi javob bergandan keyin ko'rsatiladi.", "Отметьте переключатель у единственного правильного варианта. От 2 до 6 вариантов. Пояснение ниже показывается после ответа пользователя."],
+  "Explanation (optional)": ["Izoh (ixtiyoriy)", "Пояснение (необязательно)"],
+  "Audio (teacher's recording or AI voice)": ["Audio (o'qituvchi yozuvi yoki AI ovozi)", "Аудио (запись учителя или голос ИИ)"],
+  "Question audio": ["Savol audiosi", "Аудио вопроса"],
+  "Model answer audio": ["Namunaviy javob audiosi", "Аудио образцового ответа"],
+  "AI voice language:": ["AI ovozi tili:", "Язык голоса ИИ:"],
+  "To generate audio with AI voice, add the Azure Speech key in Settings.": ["AI ovozi bilan audio yaratish uchun Sozlamalarda Azure Speech kalitini qo'shing.", "Чтобы создавать аудио голосом ИИ, добавьте ключ Azure Speech в Настройках."],
+  "Save the question first to add audio.": ["Audio qo'shish uchun avval savolni saqlang.", "Сначала сохраните вопрос, чтобы добавить аудио."],
+  "Delete this question? If users already answered it, it is hidden instead.": ["Bu savol o'chirilsinmi? Foydalanuvchilar allaqachon javob bergan bo'lsa, u yashiriladi.", "Удалить этот вопрос? Если на него уже отвечали, он будет скрыт."],
+  "This will replace the existing audio, including a teacher's recording. Continue?": ["Bu mavjud audioni, jumladan o'qituvchi yozuvini ham almashtiradi. Davom etilsinmi?", "Это заменит существующее аудио, включая запись учителя. Продолжить?"],
+  "🔊 AI voice": ["🔊 AI ovozi", "🔊 Голос ИИ"],
+  "Generating…": ["Yaratilmoqda…", "Генерация…"],
+  "{n} clip without audio": ["{n} ta audiosiz yozuv", "{n} клип без аудио"],
+  "{n} clips without audio": ["{n} ta audiosiz yozuv", "Клипов без аудио: {n}"],
+  "Generate missing audio": ["Yetishmayotgan audiolarni yaratish", "Создать недостающее аудио"],
+  "Fills only what is missing; recordings you uploaded are never replaced.": ["Faqat yetishmayotganini to'ldiradi; siz yuklagan yozuvlar hech qachon almashtirilmaydi.", "Заполняет только недостающее; загруженные вами записи никогда не заменяются."],
+  "Nothing to generate.": ["Yaratadigan narsa yo'q.", "Нечего генерировать."],
+  "Finished.": ["Tugadi.", "Готово."],
+  "{done} done of {total}": ["{total} dan {done} tayyor", "{done} из {total} готово"],
+  "{done} done, {failed} failed of {total}": ["{total} dan {done} tayyor, {failed} xato", "{done} из {total} готово, ошибок: {failed}"],
+  " ({n} skipped: no text)": [" ({n} o'tkazib yuborildi: matn yo'q)", " (пропущено {n}: нет текста)"],
+  "Last error:": ["Oxirgi xato:", "Последняя ошибка:"],
+  "No audio": ["Audio yo'q", "Нет аудио"],
+  // plans
+  "+ New plan": ["+ Yangi tarif", "+ Новый тариф"],
+  "New plan": ["Yangi tarif", "Новый тариф"],
+  "Edit plan": ["Tarifni tahrirlash", "Изменить тариф"],
+  "No plans yet. Users can't subscribe until you add one.": ["Hali tariflar yo'q. Tarif qo'shmaguningizcha foydalanuvchilar obuna bo'la olmaydi.", "Тарифов пока нет. Пока вы не добавите тариф, пользователи не смогут подписаться."],
+  "Price": ["Narxi", "Цена"],
+  "Price, UZS": ["Narxi, UZS", "Цена, UZS"],
+  "Courses": ["Kurslar", "Курсы"],
+  "Courses (none = all courses)": ["Kurslar (hech biri = barcha kurslar)", "Курсы (ничего = все курсы)"],
+  "Shown": ["Ko'rsatiladi", "Показан"],
+  "Shown to users": ["Foydalanuvchilarga ko'rsatiladi", "Показывать пользователям"],
+  // promos
+  "+ New promo code": ["+ Yangi promo-kod", "+ Новый промокод"],
+  "New promo code": ["Yangi promo-kod", "Новый промокод"],
+  "Promo code {code}": ["Promo-kod {code}", "Промокод {code}"],
+  "Users enter a code on the payment screen. The discount is taken off the plan price, so the payment request shows the reduced amount. A use is returned if the payment is rejected.": ["Foydalanuvchilar kodni to'lov ekranida kiritadi. Chegirma tarif narxidan ayriladi, shuning uchun to'lov so'rovida kamaytirilgan summa ko'rsatiladi. To'lov rad etilsa, foydalanish qaytariladi.", "Пользователи вводят код на экране оплаты. Скидка вычитается из цены тарифа, поэтому в заявке на оплату видна уменьшенная сумма. Если платёж отклонён, использование возвращается."],
+  "No promo codes yet.": ["Hali promo-kodlar yo'q.", "Промокодов пока нет."],
+  "Discount": ["Chegirma", "Скидка"],
+  "Used": ["Ishlatilgan", "Использовано"],
+  "Expires": ["Muddati", "Действует до"],
+  "(no limit)": ["(cheklovsiz)", "(без лимита)"],
+  "never": ["hech qachon", "бессрочно"],
+  "Switch on": ["Yoqish", "Включить"],
+  "Switch off": ["O'chirish", "Выключить"],
+  "Delete promo code {code}?": ["{code} promo-kodi o'chirilsinmi?", "Удалить промокод {code}?"],
+  "Code *": ["Kod *", "Код *"],
+  "Type": ["Turi", "Тип"],
+  "Percent off": ["Foizli chegirma", "Скидка в процентах"],
+  "Fixed amount off (UZS)": ["Qat'iy summa chegirmasi (UZS)", "Фиксированная скидка (UZS)"],
+  "Percent (1–99)": ["Foiz (1–99)", "Процент (1–99)"],
+  "Amount, UZS": ["Summa, UZS", "Сумма, UZS"],
+  "Already used {n}×: the code, type and amount are locked. You can still change the limit, expiry and on/off.": ["Allaqachon {n} marta ishlatilgan: kod, tur va summani o'zgartirib bo'lmaydi. Limit, muddat va yoqish/o'chirishni o'zgartirish mumkin.", "Уже использован {n} раз: код, тип и сумма заблокированы. Лимит, срок и включение/выключение изменить можно."],
+  "Usage limit (empty = unlimited)": ["Foydalanish limiti (bo'sh = cheksiz)", "Лимит использований (пусто = без лимита)"],
+  "Valid until (empty = no end)": ["Amal qilish muddati (bo'sh = cheksiz)", "Действует до (пусто = бессрочно)"],
+  "a percent discount must be between 1 and 99": ["foizli chegirma 1 dan 99 gacha bo'lishi kerak", "процентная скидка должна быть от 1 до 99"],
+  "this code already exists": ["bunday kod allaqachon mavjud", "такой код уже существует"],
+  "promo code not found": ["promo-kod topilmadi", "промокод не найден"],
+  // answers
+  "Every recorded answer. Listen and set a teacher score if the user's score is off; the teacher score is what the user sees.": ["Barcha yozib olingan javoblar. Tinglang va foydalanuvchi bahosi noto'g'ri bo'lsa, o'qituvchi bahosini qo'ying; foydalanuvchi o'qituvchi bahosini ko'radi.", "Все записанные ответы. Прослушайте и поставьте оценку учителя, если оценка пользователя неточна; пользователь видит оценку учителя."],
+  "No answers yet.": ["Hali javoblar yo'q.", "Ответов пока нет."],
+  "Graded by": ["Kim baholagan", "Кем оценено"],
+  "Score": ["Baho", "Оценка"],
+  "Teacher score": ["O'qituvchi bahosi", "Оценка учителя"],
+  "Listen": ["Tinglash", "Слушать"],
+  "Transcript:": ["Matn:", "Расшифровка:"],
+  "AI comment:": ["AI izohi:", "Комментарий ИИ:"],
+  // broadcasts
+  "+ New broadcast": ["+ Yangi xabar", "+ Новая рассылка"],
+  "New broadcast": ["Yangi ommaviy xabar", "Новая рассылка"],
+  "Edit broadcast": ["Xabarni tahrirlash", "Изменить рассылку"],
+  "No broadcasts yet. Write one to message your users through the bot.": ["Hali ommaviy xabarlar yo'q. Foydalanuvchilarga bot orqali xabar yozing.", "Рассылок пока нет. Напишите первую, чтобы отправить сообщение пользователям через бота."],
+  "Message": ["Xabar", "Сообщение"],
+  "Message *": ["Xabar *", "Сообщение *"],
+  "To": ["Kimga", "Кому"],
+  "Delivered": ["Yetkazildi", "Доставлено"],
+  "Send now": ["Hozir yuborish", "Отправить сейчас"],
+  "Everyone": ["Hamma", "Все"],
+  "Expired subscribers": ["Muddati tugagan obunachilar", "Подписчики с истёкшим доступом"],
+  "Guests (never subscribed)": ["Mehmonlar (hech qachon obuna bo'lmagan)", "Гости (никогда не подписывались)"],
+  "Course": ["Kurs", "Курс"],
+  "Users of a course…": ["Kurs foydalanuvchilari…", "Пользователи курса…"],
+  "Send this message now to \"{to}\"? It cannot be undone.": ["Bu xabar hozir \"{to}\" ga yuborilsinmi? Bekor qilib bo'lmaydi.", "Отправить это сообщение сейчас: «{to}»? Отменить нельзя."],
+  "Send this message now to {n} people? It cannot be undone.": ["Bu xabar hozir {n} kishiga yuborilsinmi? Bekor qilib bo'lmaydi.", "Отправить это сообщение сейчас {n} получателям? Отменить нельзя."],
+  "Delete this broadcast?": ["Bu xabar o'chirilsinmi?", "Удалить эту рассылку?"],
+  "{n} failed": ["{n} ta xato", "ошибок: {n}"],
+  "Pick the date and time to send.": ["Yuborish sanasi va vaqtini tanlang.", "Выберите дату и время отправки."],
+  "Test message sent to your Telegram. A draft was saved.": ["Sinov xabari Telegramingizga yuborildi. Qoralama saqlandi.", "Тестовое сообщение отправлено в ваш Telegram. Черновик сохранён."],
+  "Telegram refused the test. Have you started the bot from your admin account? A draft was saved.": ["Telegram sinovni rad etdi. Botni admin akkauntingizdan ishga tushirganmisiz? Qoralama saqlandi.", "Telegram отклонил тест. Вы запускали бота со своего админ-аккаунта? Черновик сохранён."],
+  "Plain text. Up to 4000 characters.": ["Oddiy matn. 4000 belgigacha.", "Простой текст. До 4000 символов."],
+  "with an image: text over 1024 characters is sent as a separate message": ["rasm bilan: 1024 belgidan uzun matn alohida xabar sifatida yuboriladi", "с изображением: текст длиннее 1024 символов отправляется отдельным сообщением"],
+  "Send to": ["Kimga yuborish", "Кому отправить"],
+  "person": ["kishi", "человек"],
+  "people": ["kishi", "человек"],
+  "will receive it": ["xabarni oladi", "получат сообщение"],
+  "Button (optional)": ["Tugma (ixtiyoriy)", "Кнопка (необязательно)"],
+  "Button label": ["Tugma matni", "Текст кнопки"],
+  "https://… (link opened by the button)": ["https://… (tugma ochadigan havola)", "https://… (ссылка, которую открывает кнопка)"],
+  "Image (optional)": ["Rasm (ixtiyoriy)", "Изображение (необязательно)"],
+  "🖼 Image attached": ["🖼 Rasm biriktirilgan", "🖼 Изображение прикреплено"],
+  "Image attached": ["Rasm biriktirilgan", "Изображение прикреплено"],
+  "Choose image": ["Rasm tanlash", "Выбрать изображение"],
+  "Save as draft": ["Qoralama sifatida saqlash", "Сохранить как черновик"],
+  "Save draft": ["Qoralamani saqlash", "Сохранить черновик"],
+  "Schedule": ["Rejalashtirish", "Запланировать"],
+  "Send": ["Yuborish", "Отправить"],
+  "Send test to me": ["Menga sinov yuborish", "Отправить тест мне"],
+  // reports
+  "Last {n} days": ["Oxirgi {n} kun", "Последние {n} дн."],
+  "payments": ["to'lov", "платежей"],
+  "Revenue, UZS": ["Daromad, UZS", "Выручка, UZS"],
+  "Approved payments": ["Tasdiqlangan to'lovlar", "Одобренные платежи"],
+  "Average payment, UZS": ["O'rtacha to'lov, UZS", "Средний платёж, UZS"],
+  "Answers recorded": ["Yozib olingan javoblar", "Записано ответов"],
+  "New / renewed": ["Yangi / uzaytirilgan", "Новые / продлённые"],
+  "{a} of {b}": ["{b} dan {a}", "{a} из {b}"],
+  "New users who paid": ["To'lagan yangi foydalanuvchilar", "Новые пользователи, которые оплатили"],
+  "Revenue by day": ["Kunlar bo'yicha daromad", "Выручка по дням"],
+  "By plan": ["Tariflar bo'yicha", "По тарифам"],
+  "No payments in this period.": ["Bu davrda to'lovlar yo'q.", "За этот период платежей нет."],
+  "Payments": ["To'lovlar", "Платежи"],
+  "Hardest questions": ["Eng qiyin savollar", "Самые сложные вопросы"],
+  "Needs at least 3 graded answers per question.": ["Har bir savol uchun kamida 3 ta baholangan javob kerak.", "Нужно минимум 3 оценённых ответа на вопрос."],
+  "Avg": ["O'rt.", "Ср."],
+  // settings
+  "Admin password": ["Admin paroli", "Пароль администратора"],
+  "No password is set yet. Choose one (at least 10 characters).": ["Parol hali o'rnatilmagan. Birini tanlang (kamida 10 belgi).", "Пароль ещё не задан. Придумайте его (не менее 10 символов)."],
+  "Change the password you use to sign in to this panel. At least 10 characters.": ["Bu panelga kirish parolini o'zgartiring. Kamida 10 belgi.", "Смените пароль для входа в эту панель. Не менее 10 символов."],
+  "Current password": ["Joriy parol", "Текущий пароль"],
+  "New password": ["Yangi parol", "Новый пароль"],
+  "New password again": ["Yangi parolni qayta kiriting", "Новый пароль ещё раз"],
+  "The two passwords are different.": ["Ikki parol bir xil emas.", "Пароли не совпадают."],
+  "Change password": ["Parolni o'zgartirish", "Сменить пароль"],
+  "Password changed. Use the new one next time you sign in.": ["Parol o'zgartirildi. Keyingi kirishda yangisidan foydalaning.", "Пароль изменён. Используйте новый при следующем входе."],
+  "Forgot it? Send {cmd} to your bot for a new random one.": ["Unutdingizmi? Yangi tasodifiy parol uchun botingizga {cmd} yuboring.", "Забыли? Отправьте своему боту {cmd}, чтобы получить новый случайный пароль."],
+  "Save settings": ["Sozlamalarni saqlash", "Сохранить настройки"],
+  "Saved.": ["Saqlandi.", "Сохранено."],
+  "Card number": ["Karta raqami", "Номер карты"],
+  "Shown to users on the payment screen.": ["To'lov ekranida foydalanuvchilarga ko'rsatiladi.", "Показывается пользователям на экране оплаты."],
+  "Card holder name": ["Karta egasining ismi", "Имя владельца карты"],
+  "Payment instructions": ["To'lov ko'rsatmalari", "Инструкции по оплате"],
+  "Optional extra text under the card, e.g. which apps to pay with.": ["Karta ostidagi ixtiyoriy qo'shimcha matn, masalan qaysi ilovalar orqali to'lash mumkin.", "Необязательный текст под картой, например через какие приложения можно платить."],
+  "Free questions per course": ["Kursdagi bepul savollar", "Бесплатных вопросов на курс"],
+  "Guests can answer this many questions before paying.": ["Mehmonlar to'lashdan oldin shuncha savolga javob bera oladi.", "Столько вопросов гости могут пройти до оплаты."],
+  "Answers per user per day": ["Foydalanuvchi uchun kunlik javoblar", "Ответов на пользователя в день"],
+  "Max answer length, seconds": ["Javobning eng uzun davomiyligi, soniya", "Максимальная длина ответа, секунд"],
+  "Grading": ["Baholash", "Оценивание"],
+  "Self-check (no AI, free)": ["O'zini tekshirish (AI yo'q, bepul)", "Самопроверка (без ИИ, бесплатно)"],
+  "AI grading with Google Gemini": ["Google Gemini bilan AI baholash", "Оценка ИИ через Google Gemini"],
+  "Self-check: after recording, the user sees the model answer and ticks the key points they covered. AI needs a Gemini API key below.": ["O'zini tekshirish: yozib bo'lgach foydalanuvchi namunaviy javobni ko'radi va aytgan asosiy fikrlarini belgilaydi. AI uchun quyida Gemini API kaliti kerak.", "Самопроверка: после записи пользователь видит образцовый ответ и отмечает упомянутые ключевые пункты. Для ИИ ниже нужен ключ Gemini API."],
+  "Gemini API key": ["Gemini API kaliti", "Ключ Gemini API"],
+  "From aistudio.google.com → Get API key. Stored on the server only.": ["aistudio.google.com → Get API key. Faqat serverda saqlanadi.", "На aistudio.google.com → Get API key. Хранится только на сервере."],
+  "Gemini model": ["Gemini modeli", "Модель Gemini"],
+  "Extra AI grading rules": ["AI baholashning qo'shimcha qoidalari", "Дополнительные правила оценки ИИ"],
+  "AI voice: Azure Speech key": ["AI ovozi: Azure Speech kaliti", "Голос ИИ: ключ Azure Speech"],
+  "Generates question and model-answer audio with one click (Courses and questions). portal.azure.com → create a Speech resource → Keys and Endpoint. Stored on the server only.": ["Savol va namunaviy javob audiosini bir bosishda yaratadi (Kurslar va savollar). portal.azure.com → Speech resursini yarating → Keys and Endpoint. Faqat serverda saqlanadi.", "Создаёт аудио вопросов и образцовых ответов одним нажатием (Курсы и вопросы). portal.azure.com → создайте ресурс Speech → Keys and Endpoint. Хранится только на сервере."],
+  "AI voice: Azure region": ["AI ovozi: Azure mintaqasi", "Голос ИИ: регион Azure"],
+  "From the same page, e.g. westeurope or eastus.": ["Xuddi shu sahifadan, masalan westeurope yoki eastus.", "С той же страницы, например westeurope или eastus."],
+  "Uzbek voice": ["O'zbekcha ovoz", "Узбекский голос"],
+  "Default uz-UZ-MadinaNeural (female); uz-UZ-SardorNeural is the male voice.": ["Standart uz-UZ-MadinaNeural (ayol); uz-UZ-SardorNeural — erkak ovozi.", "По умолчанию uz-UZ-MadinaNeural (женский); uz-UZ-SardorNeural — мужской."],
+  "Russian voice": ["Ruscha ovoz", "Русский голос"],
+  "Default ru-RU-SvetlanaNeural; ru-RU-DmitryNeural is the male voice.": ["Standart ru-RU-SvetlanaNeural; ru-RU-DmitryNeural — erkak ovozi.", "По умолчанию ru-RU-SvetlanaNeural; ru-RU-DmitryNeural — мужской."],
+  "Support contact": ["Yordam kontakti", "Контакт поддержки"],
+  "e.g. @your_username. Shown in Profile and to blocked users.": ["masalan, @sizning_nomingiz. Profilda va bloklangan foydalanuvchilarga ko'rsatiladi.", "например, @your_username. Показывается в Профиле и заблокированным пользователям."],
+  "Mini App URL": ["Mini App manzili", "Адрес Mini App"],
+  "https URL of the user app. The bot's menu button and \"Open app\" use it.": ["Foydalanuvchi ilovasining https manzili. Botning menyu tugmasi va \"Ilovani ochish\" undan foydalanadi.", "https-адрес приложения пользователей. Его используют кнопка меню бота и «Открыть приложение»."],
+  "Bot welcome text": ["Botning salomlashuv matni", "Приветствие бота"],
+  "Optional. Replaces the default /start message.": ["Ixtiyoriy. Standart /start xabarini almashtiradi.", "Необязательно. Заменяет стандартное сообщение /start."],
+  // voice errors
+  "set the Azure Speech key and region in Settings first": ["avval Sozlamalarda Azure Speech kaliti va mintaqasini kiriting", "сначала укажите ключ и регион Azure Speech в Настройках"],
+  "a voice job is already running for this course": ["bu kurs uchun ovoz yaratish allaqachon ishlayapti", "для этого курса уже идёт генерация голоса"],
+  // misc backend
+  "request not found": ["so'rov topilmadi", "заявка не найдена"],
+  "user not found": ["foydalanuvchi topilmadi", "пользователь не найден"],
+  "plan not found": ["tarif topilmadi", "тариф не найден"],
+  "course not found": ["kurs topilmadi", "курс не найден"],
+  "question not found": ["savol topilmadi", "вопрос не найден"],
+  "broadcast not found": ["xabar topilmadi", "рассылка не найдена"],
+  "name required": ["nom kerak", "нужно название"],
+  "a test question needs 2 to 6 options": ["test savoli uchun 2 tadan 6 tagacha variant kerak", "для тестового вопроса нужно от 2 до 6 вариантов"],
+  "mark exactly one option as correct": ["aynan bitta variantni to'g'ri deb belgilang", "отметьте ровно один правильный вариант"],
+  "options must be different": ["variantlar har xil bo'lishi kerak", "варианты должны различаться"],
+  "the scheduled time is in the past": ["rejalashtirilgan vaqt o'tib ketgan", "запланированное время уже прошло"],
+  "a button needs both a label and a link": ["tugma uchun matn ham, havola ham kerak", "для кнопки нужны и текст, и ссылка"],
+  "the button link must start with https://": ["tugma havolasi https:// bilan boshlanishi kerak", "ссылка кнопки должна начинаться с https://"],
+  "not a valid .xlsx file": ["to'g'ri .xlsx fayl emas", "это не корректный файл .xlsx"],
+  "the sheet is empty": ["varaq bo'sh", "лист пуст"],
+  "no questions found in the file": ["faylda savollar topilmadi", "в файле не найдено вопросов"],
+};
+
+let missing = new Set<string>();
+export const missingKeys = () => [...missing];
+
+/** Translate an English UI string. `{name}` placeholders are filled from `vars`. */
+export function t(key: string | null | undefined, vars?: Record<string, string | number>): string {
+  if (!key) return "";
+  const hit = lang === "en" ? undefined : D[key];
+  if (lang !== "en" && !hit) missing.add(key);
+  let s = hit ? (lang === "uz" ? hit[0] : hit[1]) : key;
+  if (vars) s = s.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? String(vars[k]) : m));
+  return s;
+}
+
+/** Like t(), but placeholders can be React nodes (for <code> snippets inside a sentence). */
+export function tx(key: string, parts: Record<string, ReactNode>): ReactNode {
+  return t(key).split(/(\{\w+\})/g).map((seg, i) => {
+    const m = /^\{(\w+)\}$/.exec(seg);
+    return m && m[1] in parts ? <Fragment key={i}>{parts[m[1]]}</Fragment> : seg;
+  });
+}
+
+/** Re-mounts the tree when the language changes, so every t() call is re-evaluated. */
+export function LangRoot({ children }: { children: ReactNode }) {
+  const [, setN] = useState(0);
+  useEffect(() => {
+    document.documentElement.lang = lang;
+    const fn = () => setN((n) => n + 1);
+    listeners.add(fn);
+    return () => { listeners.delete(fn); };
+  }, []);
+  return <Fragment key={lang}>{children}</Fragment>;
+}
+
+export function LangSwitch({ className = "" }: { className?: string }) {
+  return (
+    <div className={`lang-switch ${className}`} role="group" aria-label="Language">
+      {LANGS.map((l) => (
+        <button key={l.id} type="button" className={lang === l.id ? "on" : ""} aria-pressed={lang === l.id} onClick={() => setLang(l.id)}>{l.label}</button>
+      ))}
+    </div>
+  );
+}

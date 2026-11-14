@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import { useState } from "react";
 import { api, fmtDate, fmtDay, post } from "../api";
 import { Badge, Err, Loading, Modal, Page, Score, useLoad } from "../ui";
@@ -21,19 +22,19 @@ export default function Users() {
   const [openId, setOpenId] = useState<number | null>(null);
 
   return (
-    <Page title="Users" actions={
+    <Page title={t("Users")} actions={
       <form className="row gap" onSubmit={(e) => { e.preventDefault(); setQuery({ q, status }); }}>
-        <input placeholder="Name, phone or Telegram ID" value={q} onChange={(e) => setQ(e.target.value)} />
+        <input placeholder={t("Name, phone or Telegram ID")} value={q} onChange={(e) => setQ(e.target.value)} />
         <select value={status} onChange={(e) => { setStatus(e.target.value); setQuery({ q, status: e.target.value }); }}>
-          <option value="">All</option><option value="subscriber">Subscribers</option><option value="pending">Pending</option>
-          <option value="guest">Guests</option><option value="expired">Expired</option><option value="blocked">Blocked</option>
+          <option value="">{t("All")}</option><option value="subscriber">{t("Subscribers")}</option><option value="pending">{t("Pending")}</option>
+          <option value="guest">{t("Guests")}</option><option value="expired">{t("Expired")}</option><option value="blocked">{t("Blocked")}</option>
         </select>
-        <button className="btn">Search</button>
+        <button className="btn">{t("Search")}</button>
       </form>}>
       <Err msg={error} />
-      {!data ? <Loading /> : data.length === 0 ? <div className="empty">No users.</div> : (
+      {!data ? <Loading /> : data.length === 0 ? <div className="empty">{t("No users.")}</div> : (
         <table>
-          <thead><tr><th>Name</th><th>Phone</th><th>Telegram ID</th><th>Status</th><th>Access until</th><th>Joined</th><th>Last seen</th></tr></thead>
+          <thead><tr><th>{t("Name")}</th><th>{t("Phone")}</th><th>{t("Telegram ID")}</th><th>{t("Status")}</th><th>{t("Access until")}</th><th>{t("Joined")}</th><th>{t("Last seen")}</th></tr></thead>
           <tbody>
             {data.map((u) => (
               <tr key={u.id} className="clickable" onClick={() => setOpenId(u.id)}>
@@ -62,57 +63,57 @@ function UserModal({ id, onClose }: { id: number; onClose: () => void }) {
     try { await fn(); reload(); } catch (e) { setMsg((e as Error).message); }
   };
   return (
-    <Modal title={data?.name ?? "User"} onClose={onClose} wide>
+    <Modal title={data?.name ?? t("User")} onClose={onClose} wide>
       <Err msg={error} />
       {!data ? <Loading /> : (
         <div className="split">
           <div>
             <dl className="kv">
-              <dt>Status</dt><dd><Badge value={data.status} /></dd>
-              <dt>Phone</dt><dd>{data.phone ?? "—"}</dd>
-              <dt>Telegram ID</dt><dd>{data.telegram_id}</dd>
-              <dt>Language</dt><dd>{data.ui_language}</dd>
-              <dt>Joined</dt><dd>{fmtDate(data.created_at)}</dd>
-              <dt>Last seen</dt><dd>{fmtDate(data.last_seen)}</dd>
+              <dt>{t("Status")}</dt><dd><Badge value={data.status} /></dd>
+              <dt>{t("Phone")}</dt><dd>{data.phone ?? "—"}</dd>
+              <dt>{t("Telegram ID")}</dt><dd>{data.telegram_id}</dd>
+              <dt>{t("Language")}</dt><dd>{data.ui_language}</dd>
+              <dt>{t("Joined")}</dt><dd>{fmtDate(data.created_at)}</dd>
+              <dt>{t("Last seen")}</dt><dd>{fmtDate(data.last_seen)}</dd>
             </dl>
-            <h3>Give or extend access</h3>
+            <h3>{t("Give or extend access")}</h3>
             <div className="row gap wrap">
-              <label>Days <input type="number" min={1} value={days} onChange={(e) => setDays(+e.target.value)} style={{ width: 80 }} /></label>
+              <label>{t("Days")} <input type="number" min={1} value={days} onChange={(e) => setDays(+e.target.value)} style={{ width: 80 }} /></label>
               <select value={planId} onChange={(e) => setPlanId(e.target.value)}>
-                <option value="">All courses</option>
+                <option value="">{t("All courses")}</option>
                 {plans.data?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
-              <input placeholder="Reason (optional)" value={reason} onChange={(e) => setReason(e.target.value)} />
+              <input placeholder={t("Reason (optional)")} value={reason} onChange={(e) => setReason(e.target.value)} />
               <button className="btn good" onClick={() => act(() => post(`/admin/users/${id}/grant`,
-                { days, plan_id: planId ? +planId : null, reason }))}>Grant</button>
+                { days, plan_id: planId ? +planId : null, reason }))}>{t("Grant")}</button>
             </div>
             <div className="row gap" style={{ marginTop: 16 }}>
               {data.blocked
-                ? <button className="btn" onClick={() => act(() => post(`/admin/users/${id}/block`, { blocked: false }))}>Unblock</button>
-                : <button className="btn danger" onClick={() => confirm("Block this user?") && act(() => post(`/admin/users/${id}/block`, { blocked: true }))}>Block</button>}
+                ? <button className="btn" onClick={() => act(() => post(`/admin/users/${id}/block`, { blocked: false }))}>{t("Unblock")}</button>
+                : <button className="btn danger" onClick={() => confirm(t("Block this user?")) && act(() => post(`/admin/users/${id}/block`, { blocked: true }))}>{t("Block")}</button>}
             </div>
             <Err msg={msg} />
           </div>
           <div>
-            <h3>Subscriptions</h3>
-            {data.subscriptions.length === 0 ? <div className="muted">None</div> : (
+            <h3>{t("Subscriptions")}</h3>
+            {data.subscriptions.length === 0 ? <div className="muted">{t("None")}</div> : (
               <table className="compact"><tbody>
                 {data.subscriptions.map((s) => (
                   <tr key={s.id}>
-                    <td>{s.plan ?? "Gift"}<div className="muted small">{s.source}</div></td>
+                    <td>{s.plan ?? t("Gift")}<div className="muted small">{s.source}</div></td>
                     <td>{fmtDay(s.starts_at)} – {fmtDay(s.ends_at)}</td>
                     <td><Badge value={s.status} /></td>
                     <td>{s.status === "active" && <button className="btn small danger"
-                      onClick={() => confirm("Cancel this subscription?") && act(() => post(`/admin/subscriptions/${s.id}/cancel`))}>Cancel</button>}</td>
+                      onClick={() => confirm(t("Cancel this subscription?")) && act(() => post(`/admin/subscriptions/${s.id}/cancel`))}>{t("Cancel")}</button>}</td>
                   </tr>
                 ))}
               </tbody></table>
             )}
-            <h3>Recent answers</h3>
-            {data.attempts.length === 0 ? <div className="muted">None</div> : (
+            <h3>{t("Recent answers")}</h3>
+            {data.attempts.length === 0 ? <div className="muted">{t("None")}</div> : (
               <table className="compact"><tbody>
                 {data.attempts.map((a) => (
-                  <tr key={a.id}><td>Q{a.number}</td><td><Score v={a.score} /></td><td className="muted small">{fmtDate(a.created_at)}</td></tr>
+                  <tr key={a.id}><td>{t("Q")}{a.number}</td><td><Score v={a.score} /></td><td className="muted small">{fmtDate(a.created_at)}</td></tr>
                 ))}
               </tbody></table>
             )}
