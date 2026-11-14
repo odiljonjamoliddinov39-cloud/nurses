@@ -777,3 +777,100 @@ async def test_admin_code_login(client, monkeypatch):
     for bad in ("", "abc", "x" * 40, "ABCD-EFGH-IJKL"):
         assert (await client.post("/admin/login-code", json={"code": bad})).status_code in (401, 422)
     admin_login.reset_fails()
+
+
+async def test_admin_password(client, monkeypatch):
+    import re
+    from app import admin_login, admin_password as pw
+    from app.config import get_settings
+    from app.telegram import webhook_secret
+
+    pw.reset_fails()
+    admin_login.reset_fails()
+    H = {"X-Telegram-Bot-Api-Secret-Token": webhook_secret(TOKEN)}
+
+    async def say(tg_id, text):
+        client.sent.clear()
+        msg = {"from": {"id": tg_id, "first_name": "X"}, "chat": {"id": tg_id, "type": "private"}, "text": text}
+        assert (await client.post("/telegram/webhook", headers=H, json={"message": msg})).status_code == 200
+        return [p for m, p in client.sent if m == "sendMessage"]
+
+    async def login(password):
+        return await client.post("/admin/login-password", json={"password": password})
+
+    # no built-in default password: nothing works until one is set
+    r = await login("admin")
+    assert r.status_code == 401 and "/password" in r.text
+    assert (await login("password123")).status_code == 401
+
+    # only admins can ask the bot for a password; strangers get nothing
+    assert await say(555, "/password") == []
+    sent = await say(ADMIN, "/password")
+    assert len(sent) == 1 and sent[0]["chat_id"] == ADMIN and sent[0]["parse_mode"] == "HTML"
+    first = re.search(r"<code>([A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4})</code>", sent[0]["text"]).group(1)
+
+    r = await login(first)
+    assert r.status_code == 200, r.text
+    A = {"Authorization": "Bearer " + r.json()["token"]}
+    assert (await client.get("/admin/me", headers=A)).json()["telegram_id"] == ADMIN       # identity = first admin id
+    assert (await login(first.lower())).status_code == 401                                   # case-sensitive
+    assert (await client.get("/admin/password-status", headers=A)).json() == {"set": True}
+
+    # asking again replaces it: the old one stops working
+    second = re.search(r"<code>([A-Z2-9-]+)</code>", (await say(ADMIN, "/password"))[0]["text"]).group(1)
+    assert second != first and (await login(first)).status_code == 401 and (await login(second)).status_code == 200
+
+    # the hash is never exposed through the settings API
+    body = (await client.get("/admin/settings", headers=A)).text
+    assert "scrypt" not in body and "password" not in body.lower().replace("admin_password", "")
+
+    # change password: needs the current one, a decent new one, and different from the old
+    def change(current, new):
+        return client.post("/admin/password", headers=A, json={"current": current, "new": new})
+
+    assert (await change("wrong-current", "A-brand-new-pass-1")).status_code == 403
+    assert (await change(second, "short")).status_code == 422                    # under 10 characters
+    assert (await change(second, "aaaaaaaaaaaa")).status_code == 400              # too simple
+    assert (await change(second, second)).status_code == 400
+    assert (await change(second, "My own long pass 42")).status_code == 200
+    assert (await login(second)).status_code == 401
+    assert (await login("My own long pass 42")).status_code == 200
+    assert (await client.post("/admin/password", json={"current": "", "new": "Another long pass 1"})).status_code in (401, 403)  # needs a session
+
+    # guessing is throttled: 10 wrong passwords lock password sign-in, the bot-code path still works
+    pw.reset_fails()
+    for i in range(10):
+        assert (await login(f"guess-{i}")).status_code == 401
+    assert (await login("My own long pass 42")).status_code == 429
+    code = re.search(r"<code>([A-Z2-9]{4}-[A-Z2-9]{4})</code>", (await say(ADMIN, "/admin"))[0]["text"]).group(1)
+    assert (await client.post("/admin/login-code", json={"code": code})).status_code == 200
+    pw.reset_fails()
+    assert (await login("My own long pass 42")).status_code == 200
+    assert (await login("x" * 500)).status_code == 422                            # absurd input is refused cheaply
+    pw.reset_fails()
+
+
+async def test_admin_password_env_default(client, monkeypatch):
+    """ADMIN_PASSWORD is only an initial value: once a password is set in the panel it takes over."""
+    from app import admin_password as pw
+    from app.config import get_settings
+    pw.reset_fails()
+    monkeypatch.setattr(get_settings(), "admin_password", "Initial-Env-Pass-9")
+    assert (await client.post("/admin/login-password", json={"password": "Initial-Env-Pass-9"})).status_code == 200
+    assert (await client.post("/admin/login-password", json={"password": "nope"})).status_code == 401
+    A = {"Authorization": "Bearer " + (await client.post("/admin/login-password", json={"password": "Initial-Env-Pass-9"})).json()["token"]}
+    assert (await client.post("/admin/password", headers=A, json={"current": "Initial-Env-Pass-9", "new": "Panel-Pass-Over-Env-7"})).status_code == 200
+    assert (await client.post("/admin/login-password", json={"password": "Initial-Env-Pass-9"})).status_code == 401   # env value retired
+    assert (await client.post("/admin/login-password", json={"password": "Panel-Pass-Over-Env-7"})).status_code == 200
+    pw.reset_fails()
+
+
+def test_password_hashing():
+    from app import admin_password as pw
+    h = pw.hash_password("correct horse")
+    assert h.startswith("scrypt$") and "correct horse" not in h
+    assert pw.verify_password("correct horse", h) and not pw.verify_password("correct horsE", h)
+    assert pw.hash_password("correct horse") != h                                  # salted
+    assert not pw.verify_password("x", "garbage") and not pw.verify_password("x", "md5$1$2$3$4$5")
+    g = pw.generate_password()
+    assert len(g) == 14 and g[4] == g[9] == "-" and len({pw.generate_password() for _ in range(50)}) == 50

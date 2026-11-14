@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, put } from "../api";
+import { api, post, put } from "../api";
 import { Err, Loading, Page } from "../ui";
 
 type S = Record<string, string | number>;
@@ -26,6 +26,40 @@ const FIELDS: { key: string; label: string; help?: string; type?: "number" | "te
   { key: "welcome_text", label: "Bot welcome text", type: "textarea", help: "Optional. Replaces the default /start message." },
 ];
 
+function PasswordCard() {
+  const [isSet, setIsSet] = useState<boolean | null>(null);
+  const [current, setCurrent] = useState("");
+  const [next, setNext] = useState("");
+  const [again, setAgain] = useState("");
+  const [msg, setMsg] = useState("");
+  const [ok, setOk] = useState("");
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { api<{ set: boolean }>("/admin/password-status").then((r) => setIsSet(r.set)).catch(() => setIsSet(null)); }, []);
+
+  const mismatch = again.length > 0 && next !== again;
+  const save = async () => {
+    setBusy(true); setMsg(""); setOk("");
+    try {
+      await post("/admin/password", { current, new: next });
+      setOk("Password changed. Use the new one next time you sign in."); setCurrent(""); setNext(""); setAgain(""); setIsSet(true);
+    } catch (e) { setMsg((e as Error).message); } finally { setBusy(false); }
+  };
+  return (
+    <div className="form panel" style={{ maxWidth: 640, marginBottom: 20 }}>
+      <h3 style={{ margin: 0 }}>Admin password</h3>
+      <p className="muted small">{isSet === false ? "No password is set yet. Choose one (at least 10 characters)." : "Change the password you use to sign in to this panel. At least 10 characters."}</p>
+      {isSet && <label>Current password<input type="password" value={current} autoComplete="current-password" onChange={(e) => setCurrent(e.target.value)} /></label>}
+      <label>New password<input type="password" value={next} autoComplete="new-password" onChange={(e) => setNext(e.target.value)} /></label>
+      <label>New password again<input type="password" value={again} autoComplete="new-password" onChange={(e) => setAgain(e.target.value)} />
+        {mismatch && <span className="error-text small">The two passwords are different.</span>}</label>
+      <Err msg={msg} />
+      {ok && <div className="alert ok">{ok}</div>}
+      <button className="btn" disabled={busy || next.length < 10 || next !== again || (isSet === true && !current)} onClick={save}>Change password</button>
+      <p className="muted small">Forgot it? Send <code>/password</code> to your bot for a new random one.</p>
+    </div>
+  );
+}
+
 export default function Settings() {
   const [s, setS] = useState<S | null>(null);
   const [error, setError] = useState("");
@@ -38,6 +72,7 @@ export default function Settings() {
   if (!s) return error ? <Err msg={error} /> : <Loading />;
   return (
     <Page title="Settings">
+      <PasswordCard />
       <div className="form panel" style={{ maxWidth: 640 }}>
         {FIELDS.map((f) => {
           if (f.key.startsWith("gemini") || f.key === "ai_rules") if (s.grading_mode !== "ai") return null;

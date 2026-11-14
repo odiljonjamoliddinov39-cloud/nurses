@@ -12,8 +12,6 @@ import Reports from "./pages/Reports";
 import Settings from "./pages/Settings";
 import Users from "./pages/Users";
 
-const BOT_USERNAME: string | undefined = import.meta.env.VITE_BOT_USERNAME;
-
 const PAGES: { id: string; label: string; icon: string }[] = [
   { id: "dashboard", label: "Dashboard", icon: "📈" },
   { id: "payments", label: "Payment requests", icon: "💳" },
@@ -31,24 +29,6 @@ const PAGES: { id: string; label: string; icon: string }[] = [
 type Me = { telegram_id: number; full_name: string | null };
 type State = { kind: "loading" } | { kind: "login"; error?: string } | { kind: "ok"; me: Me };
 
-function TelegramLoginButton({ onAuth }: { onAuth: (u: Record<string, string | number>) => void }) {
-  const box = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!BOT_USERNAME || !box.current) return;
-    window.onTelegramAuth = onAuth;
-    const s = document.createElement("script");
-    s.src = "https://telegram.org/js/telegram-widget.js?22";
-    s.async = true;
-    s.setAttribute("data-telegram-login", BOT_USERNAME);
-    s.setAttribute("data-size", "large");
-    s.setAttribute("data-request-access", "write");
-    s.setAttribute("data-onauth", "onTelegramAuth(user)");
-    box.current.replaceChildren(s);
-  }, [onAuth]);
-  if (!BOT_USERNAME) return null;  // optional: the code sign-in below needs no configuration
-  return <div ref={box} className="tg-login" />;
-}
-
 const currentPage = () => {
   const id = window.location.hash.replace(/^#\/?/, "");
   return PAGES.some((p) => p.id === id) ? id : "dashboard";
@@ -60,6 +40,8 @@ const codeFromLink = () => /login\?code=([A-Za-z0-9-]+)/.exec(window.location.ha
 export default function App() {
   const [state, setState] = useState<State>({ kind: "loading" });
   const [code, setCode] = useState("");
+  const [password, setPassword] = useState("");
+  const [showCode, setShowCode] = useState(false);
   const [page, setPage] = useState(currentPage);
   const [menu, setMenu] = useState(false);
 
@@ -87,22 +69,19 @@ export default function App() {
       .catch((e) => setState({ kind: "login", error: e instanceof ApiError ? e.message : `Sign-in failed: ${e.message}` }));
   }, [check]);
 
+  const signInWithPassword = useCallback((value: string) => {
+    setState({ kind: "loading" });
+    post<{ token: string }>("/admin/login-password", { password: value })
+      .then(({ token }) => { setToken(token); setPassword(""); window.location.hash = "/dashboard"; check(); })
+      .catch((e) => setState({ kind: "login", error: e instanceof ApiError ? e.message : `Sign-in failed: ${e.message}` }));
+  }, [check]);
+
   useEffect(() => {
     setUnauthorizedHandler(() => { setToken(null); setState({ kind: "login", error: "Session expired, sign in again." }); });
     const linked = codeFromLink();
     if (linked) { window.history.replaceState(null, "", window.location.pathname); signInWithCode(linked); }  // one-tap link from the bot
     else check();
   }, [check, signInWithCode]);
-
-  const onAuth = useCallback((user: Record<string, string | number>) => {
-    setState({ kind: "loading" });
-    post<{ token: string }>("/admin/login", user)
-      .then(({ token }) => { setToken(token); check(); })
-      .catch((e) => setState({
-        kind: "login",
-        error: e instanceof ApiError && e.status === 403 ? "This Telegram account is not an admin." : `Login failed: ${e.message}`,
-      }));
-  }, [check]);
 
   if (state.kind === "loading") return <div className="login"><p className="muted">Loading…</p></div>;
   if (state.kind === "login") {
@@ -114,17 +93,26 @@ export default function App() {
             <>{state.error && <p className="error-text">{state.error}</p>}<p>Not authorised.</p></>
           ) : (
             <>
-              <ol className="steps">
-                <li>Open your bot in Telegram and send <code>/admin</code></li>
-                <li>Type the code it sends back</li>
-              </ol>
-              <form onSubmit={(e) => { e.preventDefault(); if (code.trim()) signInWithCode(code.trim()); }}>
-                <input className="code-input" value={code} autoFocus autoComplete="off" autoCapitalize="characters" spellCheck={false}
-                  placeholder="ABCD-EFGH" maxLength={16} onChange={(e) => setCode(e.target.value.toUpperCase())} />
-                <button className="btn" type="submit" disabled={code.trim().length < 8}>Sign in</button>
+              <form onSubmit={(e) => { e.preventDefault(); if (password) signInWithPassword(password); }}>
+                <label className="pw-label">Password
+                  <input className="pw-input" type="password" value={password} autoFocus autoComplete="current-password"
+                    onChange={(e) => setPassword(e.target.value)} />
+                </label>
+                <button className="btn" type="submit" disabled={!password}>Sign in</button>
               </form>
               {state.error && <p className="error-text">{state.error}</p>}
-              {BOT_USERNAME && <><div className="muted small or">or</div><TelegramLoginButton onAuth={onAuth} /></>}
+              <p className="muted small hint">First time, or forgot it? Open your bot in Telegram and send <code>/password</code>: it replies with a new password.</p>
+              <button className="link small" type="button" onClick={() => setShowCode(!showCode)}>
+                {showCode ? "Hide" : "Sign in with a one-time code from the bot instead"}
+              </button>
+              {showCode && (
+                <form onSubmit={(e) => { e.preventDefault(); if (code.trim()) signInWithCode(code.trim()); }}>
+                  <p className="muted small">Send <code>/admin</code> to the bot, then type the code it sends.</p>
+                  <input className="code-input" value={code} autoComplete="off" autoCapitalize="characters" spellCheck={false}
+                    placeholder="ABCD-EFGH" maxLength={16} onChange={(e) => setCode(e.target.value.toUpperCase())} />
+                  <button className="btn" type="submit" disabled={code.trim().length < 8}>Sign in with code</button>
+                </form>
+              )}
             </>
           )}
         </div>

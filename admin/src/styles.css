@@ -127,3 +127,8 @@ audio { height: 34px; max-width: 320px; }
 .steps code { background: rgba(128,128,128,.18); padding: 1px 6px; border-radius: 5px; }
 .code-input { width: 100%; font-size: 22px; letter-spacing: .12em; text-align: center; font-family: ui-monospace, Menlo, monospace; margin-bottom: 10px; }
 .or { text-align: center; margin: 14px 0 8px; }
+
+.pw-label { display: block; text-align: left; font-size: 13px; color: var(--muted, #6b7280); margin-bottom: 4px; }
+.pw-input { width: 100%; font-size: 18px; margin: 4px 0 12px; }
+.hint { text-align: left; margin: 14px 0 6px; line-height: 1.5; }
+.hint code { background: rgba(128,128,128,.18); padding: 1px 6px; border-radius: 5px; }

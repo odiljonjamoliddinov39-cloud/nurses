@@ -10,7 +10,8 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://nurses:nurses@localhost:5432/nurses"
     redis_url: str = "redis://localhost:6379/0"
     bot_token: str = ""
-    admin_telegram_ids: str = ""  # comma-separated
+    admin_telegram_ids: str = ""  # comma-separated; the first one is the identity used by password sign-in
+    admin_password: str = ""  # optional initial admin password; a password set in the panel overrides it
     init_data_max_age_seconds: int = 86400
     admin_session_ttl_seconds: int = 7 * 86400  # browser admin login lifetime
     cors_origins: str = ""  # comma-separated frontend origins
@@ -45,6 +46,10 @@ class Settings(BaseSettings):
         if self.public_url:
             return self.public_url.rstrip("/")
         return f"https://{self.railway_public_domain}" if self.railway_public_domain else ""
+
+    @property
+    def primary_admin_id(self) -> int:
+        return int(next(x for x in self.admin_telegram_ids.split(",") if x.strip()))
 
     @property
     def admin_ids(self) -> set[int]:
