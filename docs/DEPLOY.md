@@ -21,13 +21,16 @@ Tables are created on startup; new columns are added by the small `MIGRATIONS` l
 
 ## 2. Vercel (two projects, same repo)
 - **miniapp**: Root Directory `miniapp`, framework Vite, env `VITE_API_URL=https://<backend domain>`.
-- **admin**: Root Directory `admin`, framework Vite, env `VITE_API_URL=https://<backend domain>` and
-  `VITE_BOT_USERNAME=<bot username without @>` (for the browser sign-in button).
+- **admin**: Root Directory `admin`, framework Vite, env `VITE_API_URL=https://<backend domain>`.
+  (`VITE_BOT_USERNAME` is optional: it only adds the Telegram login-widget button.)
 - Settings -> Environments -> Production: track the branch you push to, so pushes go live.
 
 ## 3. Telegram and first run
-- BotFather `/setdomain`: pick the bot, enter the admin domain (e.g. `admin-xxxx.vercel.app`).
-  The admin panel signs in with Telegram Login; only IDs in `ADMIN_TELEGRAM_IDS` get in.
+- **Admin sign-in:** open the admin panel at any address, send `/admin` to your bot, type the code it replies with.
+  The code works once and expires in 10 minutes; only IDs in `ADMIN_TELEGRAM_IDS` get one. No BotFather domain
+  setup or extra variables are needed. After your first sign-in on an https address the bot also sends a one-tap
+  "Open admin panel" button with the code. (Vercel note: every deployment has its own permanent address; use the
+  project's Domains list or the branch address `admin-git-<branch>-<team>.vercel.app`, which always shows the newest build.)
 - Admin panel -> Settings: Mini App URL (the miniapp's production `https://<project>.vercel.app`, not a
   per-deployment URL, which sits behind Vercel's login), card number and holder, free questions.
 - Admin panel -> Courses & questions: create a course, tick Published, add or import questions.

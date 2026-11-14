@@ -143,6 +143,17 @@ class PaymentRequest(Base):
     discount: Mapped[int] = mapped_column(Integer, default=0)  # UZS taken off the plan price
 
 
+class LoginCode(Base):
+    """One-time admin sign-in code sent by the bot (stored hashed)."""
+    __tablename__ = "login_codes"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    code_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    telegram_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class PromoCode(Base):
     __tablename__ = "promo_codes"
     id: Mapped[int] = mapped_column(primary_key=True)

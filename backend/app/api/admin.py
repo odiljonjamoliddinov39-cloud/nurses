@@ -2,12 +2,13 @@
 import io
 from datetime import timedelta
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Response, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Request, Response, UploadFile
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from .. import admin_login as login_codes
 from .. import telegram
 from ..config import Settings, get_settings
 from ..db import get_session
@@ -48,6 +49,33 @@ async def admin_login(body: TelegramLogin, session: AsyncSession = Depends(get_s
         raise HTTPException(403, "admin only")
     full_name = " ".join(p for p in (fields.get("first_name"), fields.get("last_name")) if p) or None
     await upsert_user(session, tg_id, full_name)
+    token, expires = make_admin_session(tg_id, settings.bot_token, settings.admin_session_ttl_seconds)
+    return {"token": token, "expires_at": expires}
+
+
+class CodeLogin(BaseModel):
+    code: str = Field(min_length=4, max_length=32)
+
+
+@router.post("/login-code")
+async def admin_login_code(body: CodeLogin, request: Request, session: AsyncSession = Depends(get_session),
+                           settings: Settings = Depends(get_settings)):
+    """Sign in with the one-time code the bot sends to an admin who writes /admin."""
+    if not settings.bot_token:
+        raise HTTPException(503, "server misconfigured: BOT_TOKEN not set")
+    if login_codes.locked():
+        raise HTTPException(429, "too many wrong codes: wait 5 minutes, then ask the bot for a new one")
+    tg_id = await login_codes.redeem(session, body.code, settings.bot_token)
+    if tg_id is None:
+        login_codes.record_fail()
+        raise HTTPException(401, "wrong or expired code: send /admin to the bot for a new one")
+    if tg_id not in settings.admin_ids:  # the list may have changed since the code was issued
+        raise HTTPException(403, "admin only")
+    await upsert_user(session, tg_id, None)
+    origin = request.headers.get("origin", "")
+    if origin.startswith("https://") and len(origin) <= 200 and (await get_settings_map(session))["admin_url"] != origin:
+        await put_settings(session, {"admin_url": origin})  # remembered so the bot can send a one-tap link next time
+        await session.commit()
     token, expires = make_admin_session(tg_id, settings.bot_token, settings.admin_session_ttl_seconds)
     return {"token": token, "expires_at": expires}
 

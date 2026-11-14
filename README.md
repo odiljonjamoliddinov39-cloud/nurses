@@ -9,7 +9,7 @@ Access is paid by card transfer and approved by hand. See [ARCHITECTURE.md](ARCH
 |---|---|
 | `backend/` | FastAPI API, Telegram bot webhook, grading, subscriptions |
 | `miniapp/` | React + TS + Vite learner app (runs inside Telegram) |
-| `admin/` | React + TS admin panel (runs in a browser, Telegram Login) |
+| `admin/` | React + TS admin panel (runs in a browser; sign in with a one-time code from the bot's `/admin` command) |
 | `infra/` | docker-compose for running everything on one server |
 
 ## What works

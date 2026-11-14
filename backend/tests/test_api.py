@@ -703,3 +703,77 @@ async def test_ai_voice(client, monkeypatch):
     assert len(calls) == 1 and st3["failed"] == 1 and st3["running"] is False and "rejected" in st3["last_error"]
     assert (await client.get("/admin/tts/jobs/9999", headers=A)).status_code == 404
     assert (await client.get("/admin/tts/status", headers=U)).status_code in (401, 403)
+
+
+async def test_admin_code_login(client, monkeypatch):
+    import re
+    from datetime import datetime, timedelta, timezone
+    from sqlalchemy import update
+    from app import admin_login
+    from app.config import get_settings
+    from app.db import SessionLocal
+    from app.models import LoginCode
+    from app.telegram import webhook_secret
+
+    admin_login.reset_fails()
+    H = {"X-Telegram-Bot-Api-Secret-Token": webhook_secret(TOKEN)}
+
+    async def say(tg_id, text="/admin"):
+        client.sent.clear()
+        msg = {"from": {"id": tg_id, "first_name": "X"}, "chat": {"id": tg_id, "type": "private"}, "text": text}
+        assert (await client.post("/telegram/webhook", headers=H, json={"message": msg})).status_code == 200
+        return [p for m, p in client.sent if m == "sendMessage"]
+
+    def code_in(messages):
+        return re.search(r"<code>([A-Z2-9]{4}-[A-Z2-9]{4})</code>", messages[0]["text"]).group(1)
+
+    # only admins get a code; a stranger gets nothing, not even a hint
+    assert await say(555) == []
+    first = await say(ADMIN)
+    assert len(first) == 1 and first[0]["chat_id"] == ADMIN and first[0]["parse_mode"] == "HTML" and "reply_markup" not in first[0]
+    code = code_in(first)
+    assert len(await say(ADMIN, "/admin@MyBot")) == 1        # also works with the @botname suffix
+    # ...which replaced the first code: the old one is dead
+    assert (await client.post("/admin/login-code", json={"code": code})).status_code == 401
+    code = code_in(await say(ADMIN))
+
+    # sign in: typed sloppily (lower case, spaces) and the session works on admin pages
+    r = await client.post("/admin/login-code", json={"code": " " + code.lower().replace("-", " ") + " "},
+                          headers={"Origin": "https://admin-xyz.vercel.app"})
+    assert r.status_code == 200, r.text
+    A = {"Authorization": "Bearer " + r.json()["token"]}
+    assert (await client.get("/admin/me", headers=A)).json()["telegram_id"] == ADMIN
+    # a code works once
+    assert (await client.post("/admin/login-code", json={"code": code})).status_code == 401
+    # the admin panel's address was learned, so the next /admin message carries a one-tap link
+    nxt = await say(ADMIN)
+    assert nxt[0]["reply_markup"]["inline_keyboard"][0][0]["url"] == f"https://admin-xyz.vercel.app/#/login?code={code_in(nxt)}"
+    # non-https origins are never stored
+    await client.post("/admin/login-code", json={"code": code_in(await say(ADMIN))}, headers={"Origin": "http://evil.example"})
+    assert "evil" not in (await client.get("/admin/settings", headers=A)).json()["admin_url"]
+
+    # expired codes are refused
+    c2 = code_in(await say(ADMIN))
+    async with SessionLocal() as s:
+        await s.execute(update(LoginCode).values(expires_at=datetime.now(timezone.utc) - timedelta(seconds=1)))
+        await s.commit()
+    assert (await client.post("/admin/login-code", json={"code": c2})).status_code == 401
+
+    # an admin removed from the list after getting a code is refused
+    c3 = code_in(await say(ADMIN))
+    monkeypatch.setattr(get_settings(), "admin_telegram_ids", "12345")
+    assert (await client.post("/admin/login-code", json={"code": c3})).status_code == 403
+    monkeypatch.setattr(get_settings(), "admin_telegram_ids", str(ADMIN))
+
+    # guessing is throttled: after 10 wrong codes even the right one is refused for a while
+    admin_login.reset_fails()
+    good = code_in(await say(ADMIN))
+    for i in range(10):
+        assert (await client.post("/admin/login-code", json={"code": f"WRONG{i:03d}"[:8]})).status_code == 401
+    assert (await client.post("/admin/login-code", json={"code": good})).status_code == 429
+    admin_login.reset_fails()
+    assert (await client.post("/admin/login-code", json={"code": good})).status_code == 200   # lock lifts, code still valid
+    # malformed input is a clean error, not a crash
+    for bad in ("", "abc", "x" * 40, "ABCD-EFGH-IJKL"):
+        assert (await client.post("/admin/login-code", json={"code": bad})).status_code in (401, 422)
+    admin_login.reset_fails()

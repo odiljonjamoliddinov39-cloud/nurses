@@ -45,7 +45,7 @@ function TelegramLoginButton({ onAuth }: { onAuth: (u: Record<string, string | n
     s.setAttribute("data-onauth", "onTelegramAuth(user)");
     box.current.replaceChildren(s);
   }, [onAuth]);
-  if (!BOT_USERNAME) return <p className="error-text">VITE_BOT_USERNAME is not set for this deployment.</p>;
+  if (!BOT_USERNAME) return null;  // optional: the code sign-in below needs no configuration
   return <div ref={box} className="tg-login" />;
 }
 
@@ -54,8 +54,12 @@ const currentPage = () => {
   return PAGES.some((p) => p.id === id) ? id : "dashboard";
 };
 
+/** `#/login?code=ABCD-EFGH` (the bot's one-tap link) -> the code, if present. */
+const codeFromLink = () => /login\?code=([A-Za-z0-9-]+)/.exec(window.location.hash)?.[1] ?? null;
+
 export default function App() {
   const [state, setState] = useState<State>({ kind: "loading" });
+  const [code, setCode] = useState("");
   const [page, setPage] = useState(currentPage);
   const [menu, setMenu] = useState(false);
 
@@ -76,10 +80,19 @@ export default function App() {
       });
   }, []);
 
+  const signInWithCode = useCallback((value: string) => {
+    setState({ kind: "loading" });
+    post<{ token: string }>("/admin/login-code", { code: value })
+      .then(({ token }) => { setToken(token); setCode(""); window.location.hash = "/dashboard"; check(); })
+      .catch((e) => setState({ kind: "login", error: e instanceof ApiError ? e.message : `Sign-in failed: ${e.message}` }));
+  }, [check]);
+
   useEffect(() => {
     setUnauthorizedHandler(() => { setToken(null); setState({ kind: "login", error: "Session expired, sign in again." }); });
-    check();
-  }, [check]);
+    const linked = codeFromLink();
+    if (linked) { window.history.replaceState(null, "", window.location.pathname); signInWithCode(linked); }  // one-tap link from the bot
+    else check();
+  }, [check, signInWithCode]);
 
   const onAuth = useCallback((user: Record<string, string | number>) => {
     setState({ kind: "loading" });
@@ -97,9 +110,23 @@ export default function App() {
       <div className="login">
         <div className="login-card">
           <h1>Admin sign-in</h1>
-          <p className="muted">Sign in with the Telegram account listed as admin.</p>
-          {state.error && <p className="error-text">{state.error}</p>}
-          {inTelegram() ? <p>Not authorised.</p> : <TelegramLoginButton onAuth={onAuth} />}
+          {inTelegram() ? (
+            <>{state.error && <p className="error-text">{state.error}</p>}<p>Not authorised.</p></>
+          ) : (
+            <>
+              <ol className="steps">
+                <li>Open your bot in Telegram and send <code>/admin</code></li>
+                <li>Type the code it sends back</li>
+              </ol>
+              <form onSubmit={(e) => { e.preventDefault(); if (code.trim()) signInWithCode(code.trim()); }}>
+                <input className="code-input" value={code} autoFocus autoComplete="off" autoCapitalize="characters" spellCheck={false}
+                  placeholder="ABCD-EFGH" maxLength={16} onChange={(e) => setCode(e.target.value.toUpperCase())} />
+                <button className="btn" type="submit" disabled={code.trim().length < 8}>Sign in</button>
+              </form>
+              {state.error && <p className="error-text">{state.error}</p>}
+              {BOT_USERNAME && <><div className="muted small or">or</div><TelegramLoginButton onAuth={onAuth} /></>}
+            </>
+          )}
         </div>
       </div>
     );

@@ -8,6 +8,7 @@
 import hashlib
 import json
 import logging
+import re
 
 import httpx
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
@@ -237,6 +238,23 @@ async def handle_callback(session: AsyncSession, cb: dict) -> None:
         await _edit_admin_message(cb, f"ℹ️ {exc.detail}")
 
 
+async def send_admin_code(session: AsyncSession, chat_id: int, tg_id: int) -> None:
+    """/admin: a one-time sign-in code for the admin panel. Anyone else gets no hint that it exists."""
+    settings = get_settings()
+    if tg_id not in settings.admin_ids:
+        return
+    from . import admin_login
+    code = admin_login.format_code(await admin_login.issue_code(session, tg_id, settings.bot_token))
+    text = (f"🔐 Admin sign-in code:\n<code>{code}</code>\n\n"
+            "Open the admin panel and enter it. It works once and expires in 10 minutes.")
+    extra: dict = {"parse_mode": "HTML"}
+    admin_url = (await get_setting(session, "admin_url")) or ""
+    if admin_url.startswith("https://"):
+        extra["reply_markup"] = {"inline_keyboard": [[{"text": "Open admin panel",
+                                                       "url": f"{admin_url.rstrip('/')}/#/login?code={code}"}]]}
+    await send(chat_id, text, **extra)
+
+
 async def handle_message(session: AsyncSession, msg: dict) -> None:
     frm = msg.get("from") or {}
     chat_id = (msg.get("chat") or {}).get("id")
@@ -267,6 +285,9 @@ async def handle_message(session: AsyncSession, msg: dict) -> None:
         await offer_app(tr("thanks", lang))
         return
     text = (msg.get("text") or "").strip()
+    if re.match(r"^/(admin|login)(@\w+)?(\s|$)", text):
+        await send_admin_code(session, chat_id, frm["id"])
+        return
     if text.startswith("/start") or not user.phone:
         welcome = (await get_setting(session, "welcome_text")) or tr("welcome", lang)
         if user.phone:

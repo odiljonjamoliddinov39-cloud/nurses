@@ -121,3 +121,9 @@ audio { height: 34px; max-width: 320px; }
 .progress-bar { height: 8px; background: rgba(128, 128, 128, .25); border-radius: 6px; overflow: hidden; }
 .progress-bar > div { height: 100%; background: var(--accent, #2a7de1); transition: width .4s; }
 .small-gap { gap: 6px; align-items: center; }
+
+/* code sign-in */
+.steps { margin: 0 0 14px; padding-left: 20px; line-height: 1.7; text-align: left; }
+.steps code { background: rgba(128,128,128,.18); padding: 1px 6px; border-radius: 5px; }
+.code-input { width: 100%; font-size: 22px; letter-spacing: .12em; text-align: center; font-family: ui-monospace, Menlo, monospace; margin-bottom: 10px; }
+.or { text-align: center; margin: 14px 0 8px; }

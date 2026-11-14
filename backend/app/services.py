@@ -27,6 +27,7 @@ DEFAULT_SETTINGS: dict = {
     "miniapp_url": "",           # https URL of the Mini App (menu button / "Open app")
     "welcome_text": "",
     "max_answer_seconds": 180,
+    "admin_url": "",             # https URL of the admin panel; learned from the first code sign-in, used by the bot's /admin link
     "azure_tts_key": "",         # Azure Speech key, for AI voice in the admin panel
     "azure_tts_region": "",      # e.g. "westeurope"
     "tts_voice_uz": "uz-UZ-MadinaNeural",
