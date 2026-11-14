@@ -5,9 +5,10 @@ import { AuthAudio, Err, Loading, Modal, Page, useLoad } from "../ui";
 interface Topic { id: number; name: string; order: number }
 interface Course { id: number; name: I18n; description: I18n | null; is_published: boolean; questions: number; topics: Topic[] }
 interface KP { id?: number; text: string; weight: number }
+interface Opt { id?: number; text: string; is_correct: boolean }
 interface Q {
   id: number; course_id: number; topic_id: number | null; number: number; text: string; model_answer: string;
-  explanation: string | null; is_active: boolean; question_audio: number | null; answer_audio: number | null; key_points: KP[];
+  explanation: string | null; is_active: boolean; question_audio: number | null; answer_audio: number | null; key_points: KP[]; mcq_options: Opt[];
 }
 
 export default function Content() {
@@ -149,7 +150,7 @@ function Questions({ course, onChange }: { course: Course; onChange: () => void 
       <Err msg={error} />
       {!data ? <Loading /> : data.length === 0 ? <div className="empty">No questions yet. Add one or import an Excel file.</div> : (
         <table>
-          <thead><tr><th>#</th><th>Question</th><th>Topic</th><th>Key points</th><th>Audio</th><th /></tr></thead>
+          <thead><tr><th>#</th><th>Question</th><th>Topic</th><th>Key points</th><th>Test</th><th>Audio</th><th /></tr></thead>
           <tbody>
             {shown.map((q) => (
               <tr key={q.id} className={`clickable ${q.is_active ? "" : "dim"}`} onClick={() => setEdit(q)}>
@@ -157,6 +158,7 @@ function Questions({ course, onChange }: { course: Course; onChange: () => void 
                 <td className="clip">{q.text}{!q.is_active && <span className="muted small"> (hidden)</span>}</td>
                 <td>{topicName(q.topic_id)}</td>
                 <td>{q.key_points.length || <span className="warn-text">0</span>}</td>
+                <td>{q.mcq_options.length ? "✔" : <span className="muted">—</span>}</td>
                 <td>{q.question_audio ? "🔊" : ""}{q.answer_audio ? "🎧" : ""}</td>
                 <td><button className="btn small">Edit</button></td>
               </tr>
@@ -170,11 +172,14 @@ function Questions({ course, onChange }: { course: Course; onChange: () => void 
 }
 
 function QuestionModal({ q, course, onClose, onSaved }: { q: Partial<Q>; course: Course; onClose: () => void; onSaved: () => void }) {
-  const [f, setF] = useState<Partial<Q>>({ ...q, key_points: (q.key_points ?? []).map((k) => ({ ...k })) });
+  const [f, setF] = useState<Partial<Q>>({ ...q, key_points: (q.key_points ?? []).map((k) => ({ ...k })), mcq_options: (q.mcq_options ?? []).map((o) => ({ ...o })) });
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
   const [audio, setAudio] = useState({ question: q.question_audio ?? null, answer: q.answer_audio ?? null });
   const kps = f.key_points ?? [];
+  const opts = f.mcq_options ?? [];
+  const setOpt = (i: number, patch: Partial<Opt>) => setF({ ...f, mcq_options: opts.map((o, j) => (j === i ? { ...o, ...patch } : o)) });
+  const pickCorrect = (i: number) => setF({ ...f, mcq_options: opts.map((o, j) => ({ ...o, is_correct: j === i })) });
   const setKp = (i: number, patch: Partial<KP>) => setF({ ...f, key_points: kps.map((k, j) => (j === i ? { ...k, ...patch } : k)) });
 
   const save = async () => {
@@ -183,6 +188,7 @@ function QuestionModal({ q, course, onClose, onSaved }: { q: Partial<Q>; course:
       course_id: course.id, topic_id: f.topic_id ?? null, number: f.number, text: f.text ?? "",
       model_answer: f.model_answer ?? "", explanation: f.explanation ?? "", is_active: f.is_active ?? true,
       key_points: kps.filter((k) => k.text.trim()).map((k) => ({ text: k.text, weight: k.weight || 1 })),
+      mcq_options: opts.filter((o) => o.text.trim()).map((o) => ({ text: o.text, is_correct: o.is_correct })),
     };
     try {
       if (q.id) await put(`/admin/questions/${q.id}`, body); else await post("/admin/questions", body);
@@ -234,6 +240,18 @@ function QuestionModal({ q, course, onClose, onSaved }: { q: Partial<Q>; course:
             </div>
           ))}
           <button className="btn small secondary" onClick={() => setF({ ...f, key_points: [...kps, { text: "", weight: 1 }] })}>+ Key point</button>
+        </fieldset>
+        <fieldset>
+          <legend>Test mode (multiple choice, optional: leave empty to keep this question out of tests)</legend>
+          {opts.map((o, i) => (
+            <div key={i} className="row gap kp-row">
+              <input type="radio" name="correct" checked={o.is_correct} onChange={() => pickCorrect(i)} title="correct answer" />
+              <input style={{ flex: 1 }} value={o.text} onChange={(e) => setOpt(i, { text: e.target.value })} placeholder={`Option ${i + 1}`} />
+              <button className="icon" onClick={() => setF({ ...f, mcq_options: opts.filter((_, j) => j !== i) })}>✕</button>
+            </div>
+          ))}
+          {opts.length < 6 && <button className="btn small secondary" onClick={() => setF({ ...f, mcq_options: [...opts, { text: "", is_correct: opts.length === 0 }] })}>+ Option</button>}
+          {opts.length > 0 && <p className="muted small">Select the radio button next to the one correct option. 2 to 6 options. The explanation below is shown after the user answers.</p>}
         </fieldset>
         <label>Explanation (optional)<textarea rows={2} value={f.explanation ?? ""} onChange={(e) => setF({ ...f, explanation: e.target.value })} /></label>
         {q.id ? (

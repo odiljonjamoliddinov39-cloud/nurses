@@ -5,6 +5,7 @@ import AttemptView from "./screens/AttemptView";
 import Home from "./screens/Home";
 import Learn from "./screens/Learn";
 import Mock from "./screens/Mock";
+import TestMode from "./screens/Test";
 import Paywall from "./screens/Paywall";
 import Profile, { SupportLink } from "./screens/Profile";
 import QuestionScreen from "./screens/Question";
@@ -18,7 +19,8 @@ type View =
   | { name: "attempt"; id: number; initial?: Attempt }
   | { name: "paywall" }
   | { name: "mock"; courseId: number }
-  | { name: "learn"; courseId: number };
+  | { name: "learn"; courseId: number }
+  | { name: "test"; courseId: number };
 
 const browserLang = (): Lang => {
   const l = navigator.language?.slice(0, 2);
@@ -113,7 +115,8 @@ export default function App() {
         {view.name === "home" && (
           <Home key={me.course_id ?? 0} me={me} onCourse={setCourse}
             onOpen={(id) => push({ name: "question", id })} onPaywall={() => push({ name: "paywall" })}
-            onMock={(courseId) => push({ name: "mock", courseId })} onLearn={(courseId) => push({ name: "learn", courseId })} />
+            onMock={(courseId) => push({ name: "mock", courseId })} onLearn={(courseId) => push({ name: "learn", courseId })}
+            onTest={(courseId) => push({ name: "test", courseId })} />
         )}
         {view.name === "results" && <Results onOpen={(id) => push({ name: "attempt", id })} />}
         {view.name === "profile" && <Profile me={me} onLang={setLang} onPaywall={() => push({ name: "paywall" })} />}
@@ -124,6 +127,10 @@ export default function App() {
             onExit={() => { setStack([{ name: "home" }]); loadMe(); }} />
         )}
         {view.name === "learn" && <Learn courseId={view.courseId} />}
+        {view.name === "test" && (
+          <TestMode key={view.courseId} courseId={view.courseId} onPaywall={() => replace({ name: "paywall" })}
+            onExit={() => { setStack([{ name: "home" }]); loadMe(); }} />
+        )}
         {view.name === "question" && (
           <QuestionScreen key={view.id} me={me} id={view.id}
             onAttempt={(a) => replace({ name: "attempt", id: a.id, initial: a })}

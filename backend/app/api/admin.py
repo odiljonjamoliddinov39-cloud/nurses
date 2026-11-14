@@ -11,7 +11,7 @@ from sqlalchemy.orm import selectinload
 from .. import telegram
 from ..config import Settings, get_settings
 from ..db import get_session
-from ..models import (Attempt, AttemptState, AuditLog, Course, KeyPoint, PaymentRequest, PaymentStatus, Plan,
+from ..models import (Attempt, AttemptState, AuditLog, Course, KeyPoint, McqOption, PaymentRequest, PaymentStatus, Plan,
                       Question, StoredFile, Subscription, SubscriptionSource, SubscriptionStatus, Topic, User,
                       UserStatus)
 from ..security import InitDataError, admin_user, make_admin_session, upsert_user, verify_login_widget
@@ -393,6 +393,11 @@ class KeyPointBody(BaseModel):
     weight: float = Field(default=1.0, gt=0, le=100)
 
 
+class McqOptionBody(BaseModel):
+    text: str = Field(min_length=1, max_length=500)
+    is_correct: bool = False
+
+
 class QuestionBody(BaseModel):
     course_id: int
     topic_id: int | None = None
@@ -402,6 +407,18 @@ class QuestionBody(BaseModel):
     explanation: str | None = None
     is_active: bool = True
     key_points: list[KeyPointBody] = []
+    mcq_options: list[McqOptionBody] = []  # Test mode; empty = the question is not used in tests
+
+
+def check_mcq(options: list[McqOptionBody]) -> None:
+    if not options:
+        return
+    if not 2 <= len(options) <= 6:
+        raise HTTPException(400, "a test question needs 2 to 6 options")
+    if sum(o.is_correct for o in options) != 1:
+        raise HTTPException(400, "mark exactly one option as correct")
+    if len({o.text.strip().lower() for o in options}) != len(options):
+        raise HTTPException(400, "options must be different")
 
 
 def question_out(q: Question) -> dict:
@@ -409,19 +426,23 @@ def question_out(q: Question) -> dict:
             "model_answer": q.model_answer, "explanation": q.explanation, "is_active": q.is_active,
             "question_audio": file_id(q.question_audio), "answer_audio": file_id(q.answer_audio),
             "key_points": [{"id": k.id, "text": k.text, "weight": k.weight}
-                           for k in sorted(q.key_points, key=lambda k: k.id)]}
+                           for k in sorted(q.key_points, key=lambda k: k.id)],
+            "mcq_options": [{"id": o.id, "text": o.text, "is_correct": o.is_correct}
+                            for o in sorted(q.mcq_options, key=lambda o: o.id)]}
 
 
 @router.get("/courses/{course_id}/questions")
 async def list_questions(course_id: int, _: User = Depends(admin_user), session: AsyncSession = Depends(get_session)):
-    qs = (await session.execute(select(Question).options(selectinload(Question.key_points))
+    qs = (await session.execute(select(Question).options(selectinload(Question.key_points),
+                                                         selectinload(Question.mcq_options))
                                 .where(Question.course_id == course_id)
                                 .order_by(Question.number, Question.id))).scalars()
     return [question_out(q) for q in qs]
 
 
 async def _load_question(session: AsyncSession, qid: int) -> Question:
-    q = (await session.execute(select(Question).options(selectinload(Question.key_points))
+    q = (await session.execute(select(Question).options(selectinload(Question.key_points),
+                                                        selectinload(Question.mcq_options))
                                .where(Question.id == qid))).scalar_one_or_none()
     if not q:
         raise HTTPException(404, "question not found")
@@ -441,10 +462,12 @@ async def _check_refs(session: AsyncSession, body: QuestionBody) -> None:
 async def create_question(body: QuestionBody, admin: User = Depends(admin_user),
                           session: AsyncSession = Depends(get_session)):
     await _check_refs(session, body)
+    check_mcq(body.mcq_options)
     q = Question(course_id=body.course_id, topic_id=body.topic_id, number=body.number, text=body.text.strip(),
                  model_answer=body.model_answer.strip(), explanation=(body.explanation or "").strip() or None,
                  is_active=body.is_active)
     q.key_points = [KeyPoint(text=k.text.strip(), weight=k.weight) for k in body.key_points]
+    q.mcq_options = [McqOption(text=o.text.strip(), is_correct=o.is_correct) for o in body.mcq_options]
     session.add(q)
     await session.flush()
     audit(session, admin.telegram_id, "question.create", f"question:{q.id}")
@@ -457,6 +480,7 @@ async def update_question(question_id: int, body: QuestionBody, admin: User = De
                           session: AsyncSession = Depends(get_session)):
     q = await _load_question(session, question_id)
     await _check_refs(session, body)
+    check_mcq(body.mcq_options)
     old = question_out(q)
     q.course_id, q.topic_id, q.number = body.course_id, body.topic_id, body.number
     q.text, q.model_answer = body.text.strip(), body.model_answer.strip()
@@ -473,6 +497,10 @@ async def update_question(question_id: int, body: QuestionBody, admin: User = De
     for k in existing.values():
         await session.delete(k)
     q.key_points = keep + new
+    for o in list(q.mcq_options):  # options are not referenced elsewhere: replace them wholesale
+        await session.delete(o)
+    await session.flush()
+    q.mcq_options = [McqOption(text=o.text.strip(), is_correct=o.is_correct) for o in body.mcq_options]
     audit(session, admin.telegram_id, "question.update", f"question:{q.id}", old=old)
     await session.commit()
     return {"ok": True}
@@ -489,6 +517,7 @@ async def delete_question(question_id: int, admin: User = Depends(admin_user),
         action = "question.deactivate"
     else:
         await session.execute(delete(KeyPoint).where(KeyPoint.question_id == q.id))
+        await session.execute(delete(McqOption).where(McqOption.question_id == q.id))
         await session.delete(q)
         action = "question.delete"
     audit(session, admin.telegram_id, action, f"question:{question_id}")

@@ -5,9 +5,9 @@ import { ErrorBox, haptic, ScoreChip, Section, Spinner } from "../ui";
 
 type Filter = "all" | "new" | "weak" | "fav" | "range";
 
-export default function Home({ me, onOpen, onPaywall, onCourse, onMock, onLearn }: {
+export default function Home({ me, onOpen, onPaywall, onCourse, onMock, onLearn, onTest }: {
   me: Me; onOpen: (questionId: number) => void; onPaywall: () => void; onCourse: (id: number) => void;
-  onMock: (courseId: number) => void; onLearn: (courseId: number) => void;
+  onMock: (courseId: number) => void; onLearn: (courseId: number) => void; onTest: (courseId: number) => void;
 }) {
   const t = useT();
   const lang = useLang();
@@ -117,6 +117,7 @@ export default function Home({ me, onOpen, onPaywall, onCourse, onMock, onLearn 
                 <button className="btn" onClick={() => (resume ? onOpen(resume.id) : setAllDone(true))}>▶ {t("continue_btn")}</button>
                 <button className="btn secondary" onClick={() => onMock(data.course.id)}>🎓 {t("mock_exam")}</button>
                 <button className="btn secondary" onClick={() => onLearn(data.course.id)}>🎧 {t("learn_mode")}</button>
+                <button className="btn secondary" onClick={() => onTest(data.course.id)}>📝 {t("test_mode")}</button>
               </div>
             )}
             {allDone && <p className="muted small center-text">{t("all_done")}</p>}

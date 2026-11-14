@@ -96,6 +96,8 @@ export interface Stats {
   trend: { date: string; avg: number | null; count: number }[];
   weakest_topics: { topic: string; avg: number; answered: number }[];
 }
+export interface TestQuestion { id: number; number: number; text: string; options: { id: number; text: string }[] }
+export interface McqResult { correct: boolean; correct_option_id: number; explanation: string | null }
 export interface MockSet {
   questions: { id: number; number: number }[]; total_seconds: number; per_answer_seconds: number;
 }

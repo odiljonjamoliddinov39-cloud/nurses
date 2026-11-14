@@ -308,3 +308,56 @@ async def test_miniapp_url_falls_back_to_env(client, monkeypatch):
         await s.commit()
     async with SessionLocal() as s:
         assert await get_setting(s, "miniapp_url") == "https://admin.example.app"
+
+
+async def test_test_mode_mcq(client):
+    A = {"Authorization": "Bearer " + (await client.post("/admin/login", json=widget(ADMIN))).json()["token"]}
+    cid, tids, qids = await seed_course(client, A, n=4)
+    await client.put("/admin/settings", headers=A, json={"free_questions": 3})
+    U = init_data(88)
+
+    def body(i, options, **kw):
+        return {"course_id": cid, "number": i, "text": f"Q{i}?", "model_answer": "A", "explanation": kw.get("explanation"),
+                "mcq_options": options}
+
+    good = [{"text": "Right", "is_correct": True}, {"text": "Wrong 1"}, {"text": "Wrong 2"}]
+    # validation: need 2-6 options, exactly one correct, all different
+    for bad in ([{"text": "only", "is_correct": True}],
+                [{"text": "a", "is_correct": True}, {"text": "b", "is_correct": True}],
+                [{"text": "a"}, {"text": "b"}],
+                [{"text": "a", "is_correct": True}, {"text": "A"}],
+                [{"text": str(i), "is_correct": i == 0} for i in range(7)]):
+        assert (await client.put(f"/admin/questions/{qids[0]}", headers=A, json=body(1, bad))).status_code == 400
+    assert (await client.put(f"/admin/questions/{qids[0]}", headers=A, json=body(1, good, explanation="Because."))).status_code == 200
+    assert (await client.put(f"/admin/questions/{qids[1]}", headers=A, json=body(2, good))).status_code == 200
+    assert (await client.put(f"/admin/questions/{qids[3]}", headers=A, json=body(4, good))).status_code == 200  # question 4 is locked (free=3)
+
+    listed = (await client.get(f"/admin/courses/{cid}/questions", headers=A)).json()
+    assert [o["is_correct"] for o in listed[0]["mcq_options"]] == [True, False, False]
+    # editing again replaces the options instead of piling up
+    assert (await client.put(f"/admin/questions/{qids[0]}", headers=A, json=body(1, good, explanation="Because."))).status_code == 200
+    assert len((await client.get(f"/admin/courses/{cid}/questions", headers=A)).json()[0]["mcq_options"]) == 3
+
+    # learner: only questions with options AND open to this user; correct answers are not revealed
+    t = (await client.get(f"/courses/{cid}/test?count=10", headers=U)).json()
+    assert {q["id"] for q in t["questions"]} == {qids[0], qids[1]} and t["available"] == 2
+    assert all("is_correct" not in o for q in t["questions"] for o in q["options"])
+    q1 = next(q for q in t["questions"] if q["id"] == qids[0])
+    assert sorted(o["text"] for o in q1["options"]) == ["Right", "Wrong 1", "Wrong 2"]
+    right = next(o["id"] for o in q1["options"] if o["text"] == "Right")
+    wrong = next(o["id"] for o in q1["options"] if o["text"] == "Wrong 1")
+
+    r = (await client.post(f"/questions/{qids[0]}/mcq-answer", headers=U, json={"option_id": wrong})).json()
+    assert r == {"correct": False, "correct_option_id": right, "explanation": "Because."}
+    assert (await client.post(f"/questions/{qids[0]}/mcq-answer", headers=U, json={"option_id": right})).json()["correct"] is True
+    assert (await client.post(f"/questions/{qids[0]}/mcq-answer", headers=U, json={"option_id": 999999})).status_code == 400
+    # an option of another question is not accepted, and a locked question cannot be probed for its answer
+    assert (await client.post(f"/questions/{qids[1]}/mcq-answer", headers=U, json={"option_id": right})).status_code == 400
+    assert (await client.post(f"/questions/{qids[3]}/mcq-answer", headers=U, json={"option_id": right})).status_code == 402
+    # test answers are not oral attempts: statistics stay untouched
+    assert (await client.get(f"/stats?course_id={cid}", headers=U)).json()["answered"] == 0
+
+    # deleting a question removes its options too
+    assert (await client.delete(f"/admin/questions/{qids[0]}", headers=A)).status_code == 200
+    after = (await client.get(f"/courses/{cid}/test?count=10", headers=U)).json()["questions"]
+    assert {q["id"] for q in after} == {qids[1], qids[3]}  # q1 is gone; q4 became one of the 3 free questions

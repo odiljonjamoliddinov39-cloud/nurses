@@ -11,7 +11,7 @@ from sqlalchemy.orm import selectinload
 
 from ..db import SessionLocal, get_session
 from ..grading import AIError, gemini_grade, self_check_score
-from ..models import (Attempt, AttemptState, Course, Favourite, KeyPoint, PaymentRequest, PaymentStatus, Plan,
+from ..models import (Attempt, AttemptState, Course, Favourite, KeyPoint, McqOption, PaymentRequest, PaymentStatus, Plan,
                       Question, StoredFile, Topic, User, UserStatus)
 from ..config import get_settings
 from ..security import current_user
@@ -279,6 +279,49 @@ async def learn_playlist(course_id: int, user: User = Depends(current_user),
         "id": q.id, "number": q.number, "text": q.text, "topic": topics.get(q.topic_id),
         "model_answer": q.model_answer, "question_audio": file_id(q.question_audio),
         "answer_audio": file_id(q.answer_audio)} for q in qs]}
+
+
+class McqAnswer(BaseModel):
+    option_id: int
+
+
+@router.get("/courses/{course_id}/test")
+async def test_set(course_id: int, count: int = 10, user: User = Depends(current_user),
+                   session: AsyncSession = Depends(get_session)):
+    """Multiple-choice test: random accessible questions that have options. Correct answers are not sent."""
+    qs = await accessible_questions(session, user, course_id)
+    ids = [q.id for q in qs]
+    opts = (await session.execute(select(McqOption).where(McqOption.question_id.in_(ids)))).scalars().all() if ids else []
+    by_q: dict[int, list[McqOption]] = {}
+    for o in opts:
+        by_q.setdefault(o.question_id, []).append(o)
+    usable = [q for q in qs if len(by_q.get(q.id, [])) >= 2 and sum(o.is_correct for o in by_q[q.id]) == 1]
+    picked = random.sample(usable, min(max(count, 1), 30, len(usable)))
+    out = []
+    for q in picked:
+        options = by_q[q.id][:]
+        random.shuffle(options)
+        out.append({"id": q.id, "number": q.number, "text": q.text,
+                    "options": [{"id": o.id, "text": o.text} for o in options]})
+    return {"questions": out, "available": len(usable)}
+
+
+@router.post("/questions/{question_id}/mcq-answer")
+async def mcq_answer(question_id: int, body: McqAnswer, user: User = Depends(current_user),
+                     session: AsyncSession = Depends(get_session)):
+    """Instant feedback for one test answer. Only questions the user may open can be checked."""
+    not_blocked(user)
+    q = await session.get(Question, question_id)
+    if not q or not q.is_active:
+        raise HTTPException(404, "question not found")
+    if not await can_answer(session, user, q):
+        raise HTTPException(402, "subscription required")
+    opts = (await session.execute(select(McqOption).where(McqOption.question_id == q.id))).scalars().all()
+    chosen = next((o for o in opts if o.id == body.option_id), None)
+    right = next((o for o in opts if o.is_correct), None)
+    if chosen is None or right is None:
+        raise HTTPException(400, "unknown option")
+    return {"correct": chosen.id == right.id, "correct_option_id": right.id, "explanation": q.explanation}
 
 
 # ---------------------------------------------------------------- attempts

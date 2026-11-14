@@ -196,6 +196,24 @@ const S = {
     en: "Statistics appear after your first answer.",
   },
   favourite: { uz: "Sevimli", ru: "В избранное", en: "Favourite" },
+  test_mode: { uz: "Test", ru: "Тест", en: "Test" },
+  test_intro: {
+    uz: "Savollarga javob variantlarini tanlang. To'g'ri yoki noto'g'ri ekanini darhol ko'rasiz.",
+    ru: "Выбирайте варианты ответов. Правильно или нет — видно сразу.",
+    en: "Pick the right option. You see right or wrong straight away.",
+  },
+  test_none: {
+    uz: "Bu kursda hali test savollari yo'q.",
+    ru: "В этом курсе пока нет тестовых вопросов.",
+    en: "No test questions in this course yet.",
+  },
+  test_correct: { uz: "To'g'ri!", ru: "Верно!", en: "Correct!" },
+  test_wrong: { uz: "Noto'g'ri", ru: "Неверно", en: "Wrong" },
+  test_finish: { uz: "Natijani ko'rish", ru: "Показать результат", en: "See result" },
+  test_result: { uz: "Test natijasi", ru: "Результат теста", en: "Test result" },
+  test_score: { uz: "{c} / {n} to'g'ri", ru: "{c} из {n} верно", en: "{c} of {n} correct" },
+  test_mistakes: { uz: "Xatolar", ru: "Ошибки", en: "Mistakes" },
+  test_retry: { uz: "Yana test", ru: "Ещё тест", en: "Another test" },
   error: { uz: "Xatolik", ru: "Ошибка", en: "Error" },
 } satisfies Record<string, Record<Lang, string>>;
 
