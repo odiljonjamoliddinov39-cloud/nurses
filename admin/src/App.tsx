@@ -6,6 +6,7 @@ import Dashboard from "./pages/Dashboard";
 import Logs from "./pages/Logs";
 import Payments from "./pages/Payments";
 import Plans from "./pages/Plans";
+import Reports from "./pages/Reports";
 import Settings from "./pages/Settings";
 import Users from "./pages/Users";
 
@@ -18,6 +19,7 @@ const PAGES: { id: string; label: string; icon: string }[] = [
   { id: "content", label: "Courses & questions", icon: "📚" },
   { id: "plans", label: "Plans", icon: "🏷️" },
   { id: "attempts", label: "Answers", icon: "🎙️" },
+  { id: "reports", label: "Reports", icon: "📊" },
   { id: "settings", label: "Settings", icon: "⚙️" },
   { id: "logs", label: "Logs", icon: "📜" },
 ];
@@ -123,6 +125,7 @@ export default function App() {
         {page === "content" && <Content />}
         {page === "plans" && <Plans />}
         {page === "attempts" && <Attempts />}
+        {page === "reports" && <Reports />}
         {page === "settings" && <Settings />}
         {page === "logs" && <Logs />}
       </main>

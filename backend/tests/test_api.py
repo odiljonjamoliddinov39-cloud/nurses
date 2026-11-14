@@ -361,3 +361,57 @@ async def test_test_mode_mcq(client):
     assert (await client.delete(f"/admin/questions/{qids[0]}", headers=A)).status_code == 200
     after = (await client.get(f"/courses/{cid}/test?count=10", headers=U)).json()["questions"]
     assert {q["id"] for q in after} == {qids[1], qids[3]}  # q1 is gone; q4 became one of the 3 free questions
+
+
+async def pay_and_approve(client, A, U, plan_id):
+    r = await client.post("/payments", headers=U, data={"plan_id": str(plan_id)},
+                          files={"receipt": ("r.png", b"\x89PNG" + b"0" * 100, "image/png")})
+    assert r.status_code == 200, r.text
+    pays = (await client.get("/admin/payments?status=pending", headers=A)).json()
+    assert (await client.post(f"/admin/payments/{pays[0]['id']}/approve", headers=A)).status_code == 200
+
+
+async def test_reports(client):
+    import io as _io
+    A = {"Authorization": "Bearer " + (await client.post("/admin/login", json=widget(ADMIN))).json()["token"]}
+    cid, tids, qids = await seed_course(client, A, n=4)
+    await client.put("/admin/settings", headers=A, json={"free_questions": 4})
+    monthly = (await client.post("/admin/plans", headers=A, json={"name": "1 oy", "days": 30, "price_uzs": 100000, "course_ids": [cid]})).json()["id"]
+    yearly = (await client.post("/admin/plans", headers=A, json={"name": "Imtihongacha", "days": 90, "price_uzs": 250000, "course_ids": [cid]})).json()["id"]
+
+    empty = (await client.get("/admin/reports?days=7", headers=A)).json()
+    assert empty["totals"] == {"revenue": 0, "payments": 0, "average_payment": 0, "answers": 0}
+    assert len(empty["revenue_by_day"]) == 7 and empty["by_plan"] == [] and empty["hardest_questions"] == []
+
+    ana, bek, cara = init_data(201, "Ana"), init_data(202, "Bek"), init_data(203, "Cara")
+    await pay_and_approve(client, A, ana, monthly)    # Ana: new
+    await pay_and_approve(client, A, ana, yearly)     # Ana again: renewal
+    await pay_and_approve(client, A, bek, monthly)    # Bek: new
+    await client.get("/me", headers=cara)             # Cara registers but never pays
+
+    # hardest question: three zero-score answers on question 2, one full score on question 1
+    for _ in range(3):
+        await answer(client, ana, qids[1], covered=False)
+    await answer(client, ana, qids[0], covered=True)
+
+    r = (await client.get("/admin/reports?days=30", headers=A)).json()
+    assert r["totals"]["revenue"] == 450000 and r["totals"]["payments"] == 3 and r["totals"]["average_payment"] == 150000
+    assert r["totals"]["answers"] == 4
+    assert r["new_vs_renewed"] == {"new": {"count": 2, "amount": 200000}, "renewed": {"count": 1, "amount": 250000}}
+    assert {p["plan"]: (p["amount"], p["count"]) for p in r["by_plan"]} == {"1 oy": (200000, 2), "Imtihongacha": (250000, 1)}
+    assert r["by_plan"][0]["plan"] == "Imtihongacha"  # sorted by revenue
+    assert len(r["revenue_by_day"]) == 30 and r["revenue_by_day"][-1]["amount"] == 450000 and r["revenue_by_day"][-1]["count"] == 3
+    assert r["conversion"]["paying"] == 2 and r["conversion"]["new_users"] >= 3 and 0 < r["conversion"]["rate"] < 1
+    # only questions with 3+ graded answers are listed
+    assert [q["number"] for q in r["hardest_questions"]] == [2] and r["hardest_questions"][0]["average"] == 0.0
+
+    for bad in (0, 366, -5):
+        assert (await client.get(f"/admin/reports?days={bad}", headers=A)).status_code == 400
+    assert (await client.get("/admin/reports", headers=ana)).status_code in (401, 403)  # learners cannot read reports
+
+    x = await client.get("/admin/reports/export?days=30", headers=A)
+    assert x.status_code == 200 and "spreadsheetml" in x.headers["content-type"]
+    from openpyxl import load_workbook
+    wb = load_workbook(_io.BytesIO(x.content))
+    assert wb.sheetnames == ["summary", "revenue_by_day", "by_plan", "hardest_questions"]
+    assert wb["summary"]["B2"].value == 450000 and wb["by_plan"].max_row == 3

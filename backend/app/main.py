@@ -9,7 +9,7 @@ from sqlalchemy import select, text
 
 from . import models  # noqa: F401  (register tables)
 from . import telegram
-from .api import admin, health, learner
+from .api import admin, health, learner, reports
 from .config import get_settings
 from .db import Base, SessionLocal, engine
 from .models import Subscription, SubscriptionStatus, User
@@ -105,4 +105,5 @@ app.add_middleware(
 app.include_router(health.router)
 app.include_router(learner.router)
 app.include_router(admin.router)
+app.include_router(reports.router)
 app.include_router(telegram.router)

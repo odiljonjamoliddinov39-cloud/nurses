@@ -106,3 +106,11 @@ audio { height: 34px; max-width: 320px; }
 .login-card { background: var(--card); border-radius: 14px; padding: 32px; text-align: center; max-width: 420px; width: 100%; box-shadow: 0 10px 30px rgba(0,0,0,.06); }
 .login-card h1 { margin-bottom: 8px; }
 .tg-login { margin-top: 16px; min-height: 48px; }
+
+/* reports */
+.bars { display: flex; align-items: flex-end; gap: 2px; height: 120px; }
+.bar-col { flex: 1; height: 100%; display: flex; align-items: flex-end; min-width: 2px; }
+.bar-col i { display: block; width: 100%; background: var(--accent, #2a7de1); border-radius: 3px 3px 0 0; }
+.bar-col i.zero { background: rgba(128, 128, 128, .35); }
+.row.between { justify-content: space-between; }
+.row.top { align-items: flex-start; }
