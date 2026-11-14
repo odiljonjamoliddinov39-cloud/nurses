@@ -124,6 +124,7 @@ export default function App() {
 
   return (
     <div className="layout">
+      {menu && <div className="scrim" onClick={() => setMenu(false)} />}
       <aside className={menu ? "open" : ""}>
         <div className="brand">{t("Oral Exam Trainer")}<span>{t("Admin")}</span></div>
         <nav>
@@ -140,7 +141,10 @@ export default function App() {
         </div>
       </aside>
       <main>
-        <button className="burger" onClick={() => setMenu(!menu)}>☰</button>
+        <div className="topbar">
+          <button className="burger" aria-label="Menu" onClick={() => setMenu(!menu)}>☰</button>
+          <b>{t(PAGES.find((p) => p.id === page)?.label ?? "")}</b>
+        </div>
         {page === "dashboard" && <Dashboard go={go} />}
         {page === "payments" && <Payments />}
         {page === "users" && <Users />}
