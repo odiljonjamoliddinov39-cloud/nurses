@@ -19,10 +19,14 @@ Access is paid by card transfer and approved by hand. See [ARCHITECTURE.md](ARCH
 - **Learner comfort:** question filters (all / new / weak below 3 / favourites / number range), favourites,
   "Continue" to the first unanswered question, mock exam (3–5 random questions, one total timer, no hints,
   combined score), listen mode (question + model answer audio as a playlist, 0.75×–1.5×, lock-screen
-  controls), statistics (progress, average, daily streak, 14-day trend, weakest topics).
-- **Admin:** dashboard, payment requests (receipt, approve/reject with reason), users (grant/extend
-  access, cancel, block), courses and topics, questions with key points and audio, Excel
-  import/export, plans, answer review with teacher score, settings, audit log.
+  controls), statistics (progress, average, daily streak, 14-day trend, weakest topics), test mode
+  (multiple choice with instant green/red feedback and an explanation), promo code field at the paywall.
+- **Admin:** dashboard, payment requests (receipt, approve/reject with reason, promo shown), users
+  (grant/extend access, cancel, block), courses and topics, questions with key points, multiple-choice
+  options and audio, Excel import/export, one-click AI voice (single clip or all missing audio), plans,
+  promo codes (percent or fixed, usage limit, expiry), broadcasts (segments, image, button, schedule),
+  reports (revenue, new vs renewed, conversion, hardest questions, Excel), answer review with teacher
+  score, settings, audit log.
 - **Bot:** /start with phone sharing and "Open app", payment alerts to admins with Approve/Reject
   buttons, approval/rejection messages, reminders 3 days and 1 day before expiry.
 
@@ -38,6 +42,7 @@ API: http://localhost:8000/health · Mini App: http://localhost:5173 · Admin: h
 Tests: `cd backend && TEST_DATABASE_URL=postgresql+asyncpg://user@localhost:5432/test pytest`
 (API tests need an empty PostgreSQL database; unit tests run without one).
 
-## Not built yet (after MVP)
-Test mode (multiple choice; needs MCQ editing in the admin panel), broadcasts, reports, promo codes,
-Click/Payme auto-payments, more admin roles, AI voice generation (TTS) in the admin panel.
+## Not built yet
+Click/Payme automatic payments (the manual approval flow is the gate they would plug into) and extra
+admin roles (moderator, content editor). AI voice uses Azure Speech and was tested against a stand-in
+service only: try one clip in the admin panel before generating a whole course.

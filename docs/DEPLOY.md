@@ -34,6 +34,22 @@ Tables are created on startup; new columns are added by the small `MIGRATIONS` l
 - Admin panel -> Plans: add at least one plan.
 - Keep `BOT_TOKEN` secret: only in Railway variables, never in git or chat.
 
+## 4. First-time setup checklist (admin panel)
+1. **Settings:** Mini App URL, card number and holder, free questions per course (the demo questions guests may try).
+2. **Courses and questions:** create the course, tick *Published*, then *Import Excel* (download the template first).
+   Fill the key points for each question: they drive the self-check and the score.
+3. **Plans:** at least one plan (name, days, price, courses).
+4. **Audio (optional):** upload a teacher's recording per question, or add the Azure Speech key in Settings and use
+   *Generate missing audio*. Listen mode and "Hear the question" need audio.
+5. **Test mode (optional):** add 2 to 6 options per question (one correct) in the question editor.
+6. Try it end to end from your own Telegram: `/start`, share contact, *Open app*, answer a question, pay with a
+   promo code, approve it in the bot, check the subscription opened.
+
+## Upgrading a live database
+New tables are created on startup and new columns are added by the `MIGRATIONS` list in `app/main.py`
+(`ADD COLUMN IF NOT EXISTS`), so a normal redeploy upgrades the existing database. This was checked by starting the
+new code on a copy of the previous schema with real rows.
+
 ## Grading
 Default is self-check: after recording, the user sees the model answer and ticks the key points they
 covered; the score is the weighted share, 0-5. Every recording is kept, and the admin can set a teacher
