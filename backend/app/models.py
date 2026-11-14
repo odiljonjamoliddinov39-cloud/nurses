@@ -188,6 +188,12 @@ class Broadcast(Base):
     segment: Mapped[str] = mapped_column(String(64), default="all")
     scheduled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     sent_count: Mapped[int] = mapped_column(Integer, default=0)
+    status: Mapped[str] = mapped_column(String(16), default="draft")  # draft/scheduled/sending/sent/interrupted
+    total_count: Mapped[int] = mapped_column(Integer, default=0)
+    failed_count: Mapped[int] = mapped_column(Integer, default=0)
+    created_by: Mapped[int | None] = mapped_column(BigInteger)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class Setting(Base):

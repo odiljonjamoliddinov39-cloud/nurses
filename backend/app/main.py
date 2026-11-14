@@ -8,8 +8,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import select, text
 
 from . import models  # noqa: F401  (register tables)
-from . import telegram
-from .api import admin, health, learner, reports
+from . import broadcasts, telegram
+from .api import admin, broadcasts as broadcasts_api, health, learner, reports
 from .config import get_settings
 from .db import Base, SessionLocal, engine
 from .models import Subscription, SubscriptionStatus, User
@@ -20,6 +20,14 @@ log = logging.getLogger("uvicorn.error")
 # create_all only adds missing tables; columns added to existing tables are listed here.
 MIGRATIONS = [
     "ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS reminded_days INTEGER",
+    "ALTER TABLE broadcasts ADD COLUMN IF NOT EXISTS status VARCHAR(16) NOT NULL DEFAULT 'draft'",
+    "ALTER TABLE broadcasts ADD COLUMN IF NOT EXISTS total_count INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE broadcasts ADD COLUMN IF NOT EXISTS failed_count INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE broadcasts ADD COLUMN IF NOT EXISTS created_by BIGINT",
+    "ALTER TABLE broadcasts ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT now()",
+    "ALTER TABLE broadcasts ADD COLUMN IF NOT EXISTS sent_at TIMESTAMPTZ",
+    # a restart in the middle of a send must not resend: mark it interrupted instead
+    "UPDATE broadcasts SET status = 'interrupted' WHERE status = 'sending'",
 ]
 
 
@@ -75,6 +83,16 @@ async def scheduler() -> None:
         await asyncio.sleep(30 * 60)
 
 
+async def broadcast_loop() -> None:
+    """Send scheduled broadcasts when their time comes."""
+    while True:
+        try:
+            await broadcasts.dispatch_due()
+        except Exception:
+            log.exception("broadcast dispatch failed")
+        await asyncio.sleep(30)
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     # A down/misconfigured database must not kill the process: /health stays up and
@@ -90,9 +108,10 @@ async def lifespan(_: FastAPI):
         await configure_bot()
     except Exception:
         log.exception("Telegram bot setup failed")
-    task = asyncio.create_task(scheduler())
+    tasks = [asyncio.create_task(scheduler()), asyncio.create_task(broadcast_loop())]
     yield
-    task.cancel()
+    for t in tasks:
+        t.cancel()
 
 
 app = FastAPI(title="Nurses Oral Exam Trainer API", lifespan=lifespan)
@@ -106,4 +125,5 @@ app.include_router(health.router)
 app.include_router(learner.router)
 app.include_router(admin.router)
 app.include_router(reports.router)
+app.include_router(broadcasts_api.router)
 app.include_router(telegram.router)

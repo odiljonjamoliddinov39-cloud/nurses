@@ -415,3 +415,112 @@ async def test_reports(client):
     wb = load_workbook(_io.BytesIO(x.content))
     assert wb.sheetnames == ["summary", "revenue_by_day", "by_plan", "hardest_questions"]
     assert wb["summary"]["B2"].value == 450000 and wb["by_plan"].max_row == 3
+
+
+async def test_broadcasts(client, monkeypatch):
+    from datetime import datetime, timedelta, timezone
+    from app import broadcasts as bc, telegram
+    from app.db import SessionLocal
+    from app.models import Broadcast
+    from sqlalchemy import update
+
+    monkeypatch.setattr(bc, "SEND_PAUSE", 0)
+    A = {"Authorization": "Bearer " + (await client.post("/admin/login", json=widget(ADMIN))).json()["token"]}
+    cid, _, _ = await seed_course(client, A, n=3)
+    ids = {}
+    for name, tg in (("ana", 401), ("bek", 402), ("cara", 403), ("dina", 404)):
+        await client.get("/me", headers=init_data(tg, name))
+    users = {u["telegram_id"]: u["id"] for u in (await client.get("/admin/users", headers=A)).json()}
+    # ana: active subscriber, cara: expired (cancelled), dina: blocked, bek: guest on the course
+    await client.post(f"/admin/users/{users[401]}/grant", headers=A, json={"days": 30})
+    await client.post(f"/admin/users/{users[403]}/grant", headers=A, json={"days": 30})
+    cara_sub = (await client.get(f"/admin/users/{users[403]}", headers=A)).json()["subscriptions"][0]["id"]
+    await client.post(f"/admin/subscriptions/{cara_sub}/cancel", headers=A)
+    await client.post(f"/admin/users/{users[404]}/block", headers=A, json={"blocked": True})
+    assert (await client.patch("/me", headers=init_data(402, "bek"), json={"course_id": cid})).status_code == 200
+
+    async def count(segment):
+        return (await client.get(f"/admin/broadcasts/preview?segment={segment}", headers=A)).json()["count"]
+
+    # segments: the blocked user is never reached; the admin (999) is a guest like bek
+    assert await count("all") == 4        # ana, bek, cara, admin
+    assert await count("subscribers") == 1
+    assert await count("expired") == 1
+    assert await count("guests") == 2     # bek and the admin
+    assert await count(f"course:{cid}") == 1
+    assert (await client.get("/admin/broadcasts/preview?segment=nope", headers=A)).status_code == 400
+
+    # validation
+    base = {"text": "Salom!", "segment": "all"}
+    for bad in ({**base, "text": ""}, {**base, "segment": "vip"}, {**base, "segment": "course:9999"},
+                {**base, "button_text": "Open"}, {**base, "button_text": "Open", "button_url": "http://x.example"},
+                {**base, "scheduled_at": (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()}):
+        assert (await client.post("/admin/broadcasts", headers=A, json=bad)).status_code in (400, 404, 422), bad
+    assert (await client.get("/admin/broadcasts", headers=init_data(401, "ana"))).status_code in (401, 403)
+
+    # a draft sends nothing; "test" goes to the admin only
+    client.sent.clear()
+    b = (await client.post("/admin/broadcasts", headers=A, json={
+        **base, "segment": "subscribers", "button_text": "Ochish", "button_url": "https://t.me/example"})).json()
+    assert b["status"] == "draft" and b["scheduled_at"] is None and client.sent == []
+    assert (await client.post(f"/admin/broadcasts/{b['id']}/test", headers=A)).json() == {"ok": True}
+    assert [(m, p["chat_id"]) for m, p in client.sent] == [("sendMessage", ADMIN)]
+    assert client.sent[0][1]["reply_markup"]["inline_keyboard"][0][0] == {"text": "Ochish", "url": "https://t.me/example"}
+
+    # send now: only the subscriber gets it, progress is recorded
+    client.sent.clear()
+    assert (await client.post(f"/admin/broadcasts/{b['id']}/send", headers=A)).status_code == 200
+    assert [(m, p["chat_id"]) for m, p in client.sent] == [("sendMessage", 401)]
+    done = next(x for x in (await client.get("/admin/broadcasts", headers=A)).json() if x["id"] == b["id"])
+    assert (done["status"], done["total"], done["sent"], done["failed"]) == ("sent", 1, 1, 0) and done["sent_at"]
+    # a sent broadcast cannot be changed, resent or deleted
+    assert (await client.post(f"/admin/broadcasts/{b['id']}/send", headers=A)).status_code == 409
+    assert (await client.put(f"/admin/broadcasts/{b['id']}", headers=A, json=base)).status_code == 409
+    assert (await client.delete(f"/admin/broadcasts/{b['id']}", headers=A)).status_code == 409
+
+    # failed deliveries are counted, not fatal
+    real_call = telegram.call
+
+    async def flaky(method, payload=None, files=None):
+        return None if payload and payload.get("chat_id") == 402 else await real_call(method, payload, files)
+
+    monkeypatch.setattr(telegram, "call", flaky)
+    client.sent.clear()
+    r = (await client.post("/admin/broadcasts", headers=A, json={**base, "send_now": True})).json()
+    after = next(x for x in (await client.get("/admin/broadcasts", headers=A)).json() if x["id"] == r["id"])
+    assert (after["total"], after["sent"], after["failed"], after["status"]) == (4, 3, 1, "sent")
+    monkeypatch.setattr(telegram, "call", real_call)  # deliveries work again
+
+    # image: sent as a photo with the text as caption; long text goes as photo + message
+    png = ("a.png", b"\x89PNG" + b"0" * 100, "image/png")
+    img = (await client.post("/admin/broadcasts", headers=A, json={**base, "segment": f"course:{cid}"})).json()
+    assert (await client.post(f"/admin/broadcasts/{img['id']}/image", headers=A, files={"image": png})).json()["image"]
+    assert (await client.post(f"/admin/broadcasts/{img['id']}/image", headers=A,
+                              files={"image": ("a.txt", b"hello", "text/plain")})).status_code == 415
+    client.sent.clear()
+    await client.post(f"/admin/broadcasts/{img['id']}/send", headers=A)
+    assert [(m, p["chat_id"], p.get("caption")) for m, p in client.sent] == [("sendPhoto", 402, "Salom!")]
+    long_text = "x" * 1500
+    img2 = (await client.post("/admin/broadcasts", headers=A, json={**base, "text": long_text, "segment": "subscribers"})).json()
+    await client.post(f"/admin/broadcasts/{img2['id']}/image", headers=A, files={"image": png})
+    client.sent.clear()
+    await client.post(f"/admin/broadcasts/{img2['id']}/send", headers=A)
+    assert [m for m, _ in client.sent] == ["sendPhoto", "sendMessage"] and client.sent[1][1]["text"] == long_text
+
+    # scheduled: waits until its time, then is claimed exactly once
+    soon = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
+    s = (await client.post("/admin/broadcasts", headers=A, json={**base, "segment": "expired", "scheduled_at": soon})).json()
+    assert s["status"] == "scheduled"
+    client.sent.clear()
+    assert await bc.dispatch_due() == 0 and client.sent == []
+    async with SessionLocal() as session:   # time passes
+        await session.execute(update(Broadcast).where(Broadcast.id == s["id"]).values(
+            scheduled_at=datetime.now(timezone.utc) - timedelta(minutes=1)))
+        await session.commit()
+    assert await bc.dispatch_due() == 1
+    assert [(m, p["chat_id"]) for m, p in client.sent] == [("sendMessage", 403)]
+    assert await bc.dispatch_due() == 0     # not sent twice
+    # scheduled ones can still be edited and deleted
+    s2 = (await client.post("/admin/broadcasts", headers=A, json={**base, "scheduled_at": soon})).json()
+    assert (await client.put(f"/admin/broadcasts/{s2['id']}", headers=A, json=base)).json()["status"] == "draft"
+    assert (await client.delete(f"/admin/broadcasts/{s2['id']}", headers=A)).status_code == 200
