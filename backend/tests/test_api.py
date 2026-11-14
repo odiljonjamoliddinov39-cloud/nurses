@@ -874,3 +874,11 @@ def test_password_hashing():
     assert not pw.verify_password("x", "garbage") and not pw.verify_password("x", "md5$1$2$3$4$5")
     g = pw.generate_password()
     assert len(g) == 14 and g[4] == g[9] == "-" and len({pw.generate_password() for _ in range(50)}) == 50
+
+
+async def test_health_reports_version(client, monkeypatch):
+    monkeypatch.setenv("RAILWAY_GIT_COMMIT_SHA", "57361e4abcdef0123456789")
+    assert (await client.get("/health")).json() == {"status": "ok", "version": "57361e4"}
+    monkeypatch.delenv("RAILWAY_GIT_COMMIT_SHA")
+    monkeypatch.delenv("GIT_COMMIT", raising=False)
+    assert (await client.get("/health")).json() == {"status": "ok", "version": "unknown"}
