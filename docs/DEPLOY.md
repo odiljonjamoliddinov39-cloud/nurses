@@ -1,0 +1,62 @@
+# Deploy: Railway (backend + bot) and Vercel (miniapp + admin)
+
+The Telegram bot runs inside the backend (webhook at `/telegram/webhook`), so Railway needs only
+**Postgres** and **backend**. Uploaded audio and receipts are stored in Postgres. Redis, S3 and the
+arq worker are not needed.
+
+## 1. Railway
+1. New Project -> Deploy PostgreSQL.
+2. New -> GitHub Repo -> `nurses`. Service **backend**: Settings -> Root Directory `backend` (Dockerfile is detected).
+   Variables:
+   - `DATABASE_URL` = reference the Postgres service's `DATABASE_URL`
+   - `BOT_TOKEN` = token from @BotFather
+   - `ADMIN_TELEGRAM_IDS` = your Telegram ID(s), comma-separated (from @userinfobot)
+   - `CORS_ORIGINS` = your two Vercel URLs, comma-separated
+   - `PORT` = `8000` if the public domain targets port 8000
+   Then Settings -> Networking -> Generate Domain. Check `https://<domain>/ready`.
+   On startup the backend registers the bot webhook on its Railway domain and, once the Mini App URL
+   is set (admin Settings), the bot's menu button.
+
+Tables are created on startup; new columns are added by the small `MIGRATIONS` list in `app/main.py`.
+
+## 2. Vercel (two projects, same repo)
+- **miniapp**: Root Directory `miniapp`, framework Vite, env `VITE_API_URL=https://<backend domain>`.
+- **admin**: Root Directory `admin`, framework Vite, env `VITE_API_URL=https://<backend domain>`.
+  (`VITE_BOT_USERNAME` is optional: it only adds the Telegram login-widget button.)
+- Settings -> Environments -> Production: track the branch you push to, so pushes go live.
+
+## 3. Telegram and first run
+- **Admin sign-in:** open the admin panel at any address, send `/admin` to your bot, type the code it replies with.
+  The code works once and expires in 10 minutes; only IDs in `ADMIN_TELEGRAM_IDS` get one. No BotFather domain
+  setup or extra variables are needed. After your first sign-in on an https address the bot also sends a one-tap
+  "Open admin panel" button with the code. (Vercel note: every deployment has its own permanent address; use the
+  project's Domains list or the branch address `admin-git-<branch>-<team>.vercel.app`, which always shows the newest build.)
+- Admin panel -> Settings: Mini App URL (the miniapp's production `https://<project>.vercel.app`, not a
+  per-deployment URL, which sits behind Vercel's login), card number and holder, free questions.
+- Admin panel -> Courses & questions: create a course, tick Published, add or import questions.
+- Admin panel -> Plans: add at least one plan.
+- Keep `BOT_TOKEN` secret: only in Railway variables, never in git or chat.
+
+## 4. First-time setup checklist (admin panel)
+1. **Settings:** Mini App URL, card number and holder, free questions per course (the demo questions guests may try).
+2. **Courses and questions:** create the course, tick *Published*, then *Import Excel* (download the template first).
+   Fill the key points for each question: they drive the self-check and the score.
+3. **Plans:** at least one plan (name, days, price, courses).
+4. **Audio (optional):** upload a teacher's recording per question, or add the Azure Speech key in Settings and use
+   *Generate missing audio*. Listen mode and "Hear the question" need audio.
+5. **Test mode (optional):** add 2 to 6 options per question (one correct) in the question editor.
+6. Try it end to end from your own Telegram: `/start`, share contact, *Open app*, answer a question, pay with a
+   promo code, approve it in the bot, check the subscription opened.
+
+## Upgrading a live database
+New tables are created on startup and new columns are added by the `MIGRATIONS` list in `app/main.py`
+(`ADD COLUMN IF NOT EXISTS`), so a normal redeploy upgrades the existing database. This was checked by starting the
+new code on a copy of the previous schema with real rows.
+
+## Grading
+Default is self-check: after recording, the user sees the model answer and ticks the key points they
+covered; the score is the weighted share, 0-5. Every recording is kept, and the admin can set a teacher
+score under Answers. For AI grading, choose "AI grading" in Settings and add a Google Gemini API key.
+
+## Moving off Railway later
+Everything is plain Docker plus env vars from `.env.example`; `infra/docker-compose.yml` runs the same stack on a VPS.
