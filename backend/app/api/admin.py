@@ -100,6 +100,7 @@ async def list_payments(status: str | None = "pending", _: User = Depends(admin_
             raise HTTPException(400, "bad status")
     rows = (await session.execute(stmt)).all()
     return [{"id": r.id, "code": r.payment_code, "amount": r.amount, "status": r.status.value,
+             "promo": r.promo_code, "discount": r.discount,
              "plan": plan, "receipt": file_id(r.receipt_image), "reject_reason": r.reject_reason,
              "created_at": r.created_at, "reviewed_at": r.reviewed_at,
              "user": {"id": u.id, "name": u.full_name, "phone": u.phone, "telegram_id": u.telegram_id}}

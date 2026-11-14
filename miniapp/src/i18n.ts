@@ -214,6 +214,20 @@ const S = {
   test_score: { uz: "{c} / {n} to'g'ri", ru: "{c} из {n} верно", en: "{c} of {n} correct" },
   test_mistakes: { uz: "Xatolar", ru: "Ошибки", en: "Mistakes" },
   test_retry: { uz: "Yana test", ru: "Ещё тест", en: "Another test" },
+  promo_label: { uz: "Promo-kod", ru: "Промокод", en: "Promo code" },
+  promo_apply: { uz: "Qo'llash", ru: "Применить", en: "Apply" },
+  promo_ok: {
+    uz: "Chegirma −{d} so'm. To'lov: {p} so'm",
+    ru: "Скидка −{d} сум. К оплате: {p} сум",
+    en: "Discount −{d} UZS. You pay {p} UZS",
+  },
+  promo_remove: { uz: "Olib tashlash", ru: "Убрать", en: "Remove" },
+  promo_r_unknown: { uz: "Bunday promo-kod yo'q.", ru: "Такого промокода нет.", en: "No such promo code." },
+  promo_r_inactive: { uz: "Bu promo-kod o'chirilgan.", ru: "Этот промокод отключён.", en: "This promo code is switched off." },
+  promo_r_expired: { uz: "Promo-kod muddati tugagan.", ru: "Срок промокода истёк.", en: "This promo code has expired." },
+  promo_r_used_up: { uz: "Promo-kod limiti tugagan.", ru: "Лимит промокода исчерпан.", en: "This promo code has been used up." },
+  promo_r_already_used: { uz: "Siz bu promo-koddan foydalangansiz.", ru: "Вы уже использовали этот промокод.", en: "You have already used this promo code." },
+  promo_r_too_big: { uz: "Bu promo-kod bu tarifga mos kelmaydi.", ru: "Этот промокод не подходит к тарифу.", en: "This promo code doesn't fit this plan." },
   error: { uz: "Xatolik", ru: "Ошибка", en: "Error" },
 } satisfies Record<string, Record<Lang, string>>;
 

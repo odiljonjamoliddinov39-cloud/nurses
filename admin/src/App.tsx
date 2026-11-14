@@ -7,6 +7,7 @@ import Dashboard from "./pages/Dashboard";
 import Logs from "./pages/Logs";
 import Payments from "./pages/Payments";
 import Plans from "./pages/Plans";
+import Promos from "./pages/Promos";
 import Reports from "./pages/Reports";
 import Settings from "./pages/Settings";
 import Users from "./pages/Users";
@@ -19,6 +20,7 @@ const PAGES: { id: string; label: string; icon: string }[] = [
   { id: "users", label: "Users", icon: "👥" },
   { id: "content", label: "Courses & questions", icon: "📚" },
   { id: "plans", label: "Plans", icon: "🏷️" },
+  { id: "promos", label: "Promo codes", icon: "🏷️" },
   { id: "attempts", label: "Answers", icon: "🎙️" },
   { id: "broadcasts", label: "Broadcasts", icon: "📣" },
   { id: "reports", label: "Reports", icon: "📊" },
@@ -128,6 +130,7 @@ export default function App() {
         {page === "plans" && <Plans />}
         {page === "attempts" && <Attempts />}
         {page === "broadcasts" && <Broadcasts />}
+        {page === "promos" && <Promos />}
         {page === "reports" && <Reports />}
         {page === "settings" && <Settings />}
         {page === "logs" && <Logs />}

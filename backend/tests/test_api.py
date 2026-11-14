@@ -524,3 +524,102 @@ async def test_broadcasts(client, monkeypatch):
     s2 = (await client.post("/admin/broadcasts", headers=A, json={**base, "scheduled_at": soon})).json()
     assert (await client.put(f"/admin/broadcasts/{s2['id']}", headers=A, json=base)).json()["status"] == "draft"
     assert (await client.delete(f"/admin/broadcasts/{s2['id']}", headers=A)).status_code == 200
+
+
+async def test_promo_codes(client):
+    from datetime import datetime, timedelta, timezone
+    A = {"Authorization": "Bearer " + (await client.post("/admin/login", json=widget(ADMIN))).json()["token"]}
+    cid, _, _ = await seed_course(client, A, n=2)
+    plan = (await client.post("/admin/plans", headers=A, json={"name": "1 oy", "days": 30, "price_uzs": 100000, "course_ids": [cid]})).json()["id"]
+    ana, bek = init_data(501, "Ana"), init_data(502, "Bek")
+
+    def make(code, kind="percent", value=20, **kw):
+        return client.post("/admin/promos", headers=A, json={"code": code, "kind": kind, "value": value, **kw})
+
+    # creating: stored upper-case, unique, validated
+    r = await make("yoz-20")
+    assert r.status_code == 200 and r.json()["code"] == "YOZ-20" and r.json()["used_count"] == 0
+    assert (await make("YOZ-20")).status_code == 409
+    for bad in (dict(code="ab"), dict(code="has space"), dict(code="OK1", value=0), dict(code="OK2", value=100),
+                dict(code="OK3", kind="other")):
+        assert (await make(**bad)).status_code in (400, 422), bad
+
+    # checking as a learner
+    async def check(code, who=ana):
+        return (await client.get(f"/promo/check?code={code}&plan_id={plan}", headers=who)).json()
+
+    assert await check("yoz-20") == {"valid": True, "code": "YOZ-20", "discount": 20000, "final": 80000}  # case-insensitive
+    assert await check("nope") == {"valid": False, "reason": "unknown"}
+    await make("FIX30", "fixed", 30000)
+    assert (await check("FIX30"))["final"] == 70000
+    await make("ALL", "fixed", 100000)
+    assert await check("ALL") == {"valid": False, "reason": "too_big"}      # the plan would cost nothing
+    await make("OLD", expires_at=(datetime.now(timezone.utc) - timedelta(days=1)).isoformat())
+    assert await check("OLD") == {"valid": False, "reason": "expired"}
+    await make("OFF", is_active=False)
+    assert await check("OFF") == {"valid": False, "reason": "inactive"}
+    assert (await client.get("/promo/check?code=X&plan_id=9999", headers=ana)).status_code == 404
+
+    # paying with a code: discounted amount, use reserved, admin and bot see it
+    receipt = {"receipt": ("r.png", b"\x89PNG" + b"0" * 100, "image/png")}
+    r = await client.post("/payments", headers=ana, data={"plan_id": str(plan), "promo": "yoz-20"}, files=receipt)
+    assert r.status_code == 200, r.text
+    pay = (await client.get("/admin/payments", headers=A)).json()[0]
+    assert (pay["amount"], pay["discount"], pay["promo"]) == (80000, 20000, "YOZ-20")
+    assert [p for p in (await client.get("/admin/promos", headers=A)).json() if p["code"] == "YOZ-20"][0]["used_count"] == 1
+    assert any("Promo YOZ-20" in (p.get("caption") or "") for m, p in client.sent if m == "sendPhoto")
+    assert (await client.get("/payments", headers=ana)).json()[0]["promo"] == "YOZ-20"
+    # one use per person while a payment with it is open
+    assert await check("yoz-20") == {"valid": False, "reason": "already_used"}
+    # an invalid code stops the payment and uses nothing
+    bad = await client.post("/payments", headers=bek, data={"plan_id": str(plan), "promo": "OLD"}, files=receipt)
+    assert bad.status_code == 400 and "expired" in bad.text
+    assert (await client.get("/admin/payments?status=all", headers=A)).json().__len__() == 1
+
+    # rejecting gives the use back and lets the same person try again
+    assert (await client.post(f"/admin/payments/{pay['id']}/reject", headers=A, json={"reason": "amount"})).status_code == 200
+    assert [p for p in (await client.get("/admin/promos", headers=A)).json() if p["code"] == "YOZ-20"][0]["used_count"] == 0
+    assert (await check("yoz-20"))["valid"] is True
+
+    # usage limit: the second person is refused once it is used up; approval keeps it counted
+    await make("ONCE", value=50, max_uses=1)
+    assert (await client.post("/payments", headers=ana, data={"plan_id": str(plan), "promo": "ONCE"}, files=receipt)).status_code == 200
+    assert await check("ONCE", bek) == {"valid": False, "reason": "used_up"}
+    assert (await client.post("/payments", headers=bek, data={"plan_id": str(plan), "promo": "ONCE"}, files=receipt)).status_code == 400
+    pend = (await client.get("/admin/payments", headers=A)).json()[0]
+    assert pend["amount"] == 50000
+    assert (await client.post(f"/admin/payments/{pend['id']}/approve", headers=A)).status_code == 200
+    rep = (await client.get("/admin/reports?days=7", headers=A)).json()
+    assert rep["totals"]["revenue"] == 50000      # revenue is what was actually paid
+
+    # editing and deleting rules
+    promos = {p["code"]: p for p in (await client.get("/admin/promos", headers=A)).json()}
+    once = promos["ONCE"]
+    base = {"code": "ONCE", "kind": "percent", "value": 50}
+    assert (await client.put(f"/admin/promos/{once['id']}", headers=A, json={**base, "value": 10})).status_code == 409   # used: value is frozen
+    assert (await client.put(f"/admin/promos/{once['id']}", headers=A, json={**base, "max_uses": 5})).status_code == 200  # limit can grow
+    assert (await client.delete(f"/admin/promos/{once['id']}", headers=A)).status_code == 409                           # used: switch off instead
+    assert (await client.put(f"/admin/promos/{once['id']}", headers=A, json={**base, "max_uses": 5, "is_active": False})).json()["is_active"] is False
+    assert (await client.put(f"/admin/promos/{promos['FIX30']['id']}", headers=A,
+                             json={"code": "FIX30", "kind": "fixed", "value": 25000})).json()["value"] == 25000      # unused: can change
+    assert (await client.delete(f"/admin/promos/{promos['FIX30']['id']}", headers=A)).status_code == 200
+    assert (await client.get("/admin/promos", headers=ana)).status_code in (401, 403)
+
+
+async def test_promo_one_use_race(client):
+    import asyncio
+    A = {"Authorization": "Bearer " + (await client.post("/admin/login", json=widget(ADMIN))).json()["token"]}
+    cid, _, _ = await seed_course(client, A, n=1)
+    plan = (await client.post("/admin/plans", headers=A, json={"name": "P", "days": 30, "price_uzs": 100000, "course_ids": [cid]})).json()["id"]
+    await client.post("/admin/promos", headers=A, json={"code": "RACE", "kind": "percent", "value": 10, "max_uses": 1})
+    receipt = lambda: {"receipt": ("r.png", b"\x89PNG" + b"0" * 100, "image/png")}
+    users = [init_data(600 + i, f"U{i}") for i in range(6)]
+    results = await asyncio.gather(*[client.post("/payments", headers=u, data={"plan_id": str(plan), "promo": "RACE"}, files=receipt())
+                                     for u in users])
+    ok = [r for r in results if r.status_code == 200]
+    assert len(ok) == 1, [r.status_code for r in results]          # exactly one winner out of six
+    assert all(r.status_code == 400 for r in results if r is not ok[0])
+    promo = (await client.get("/admin/promos", headers=A)).json()[0]
+    assert promo["used_count"] == 1
+    discounted = [p for p in (await client.get("/admin/payments?status=all", headers=A)).json() if p["promo"]]
+    assert len(discounted) == 1                                    # the losers created no payment request

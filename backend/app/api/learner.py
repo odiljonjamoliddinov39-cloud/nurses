@@ -15,7 +15,7 @@ from ..models import (Attempt, AttemptState, Course, Favourite, KeyPoint, McqOpt
                       Question, StoredFile, Topic, User, UserStatus)
 from ..config import get_settings
 from ..security import current_user
-from ..services import (AUDIO_TYPES, IMAGE_TYPES, MAX_AUDIO, MAX_IMAGE, active_subscription, can_answer,
+from ..services import (AUDIO_TYPES, check_promo, reserve_promo, IMAGE_TYPES, MAX_AUDIO, MAX_IMAGE, active_subscription, can_answer,
                         effective_status, file_id, file_ref, free_question_ids, get_settings_map,
                         new_payment_code, now_utc, round_half, store_upload, subscription_covers,
                         sync_user_status)
@@ -506,6 +506,19 @@ async def list_plans(user: User = Depends(current_user), session: AsyncSession =
              "courses": [c.name for c in p.courses]} for p in plans]
 
 
+@router.get("/promo/check")
+async def promo_check(code: str, plan_id: int, user: User = Depends(current_user),
+                      session: AsyncSession = Depends(get_session)):
+    """Preview a promo code for a plan: the discount and the final price, or why it can't be used."""
+    plan = await session.get(Plan, plan_id)
+    if not plan or not plan.is_active:
+        raise HTTPException(404, "plan not found")
+    promo, discount, reason = await check_promo(session, user.id, code, plan.price_uzs)
+    if reason:
+        return {"valid": False, "reason": reason}
+    return {"valid": True, "code": promo.code, "discount": discount, "final": plan.price_uzs - discount}
+
+
 @router.get("/payment-info")
 async def payment_info(user: User = Depends(current_user), session: AsyncSession = Depends(get_session)):
     s = await get_settings_map(session)
@@ -517,6 +530,7 @@ async def create_payment(
     background: BackgroundTasks,
     plan_id: int = Form(...),
     receipt: UploadFile = File(...),
+    promo: str | None = Form(None),
     user: User = Depends(current_user),
     session: AsyncSession = Depends(get_session),
 ):
@@ -528,9 +542,17 @@ async def create_payment(
         PaymentRequest.user_id == user.id, PaymentRequest.status == PaymentStatus.pending))).first()
     if open_req:
         raise HTTPException(409, "you already have a request waiting for review")
+    promo_code, discount = None, 0
+    if promo and promo.strip():
+        found, discount, reason = await check_promo(session, user.id, promo, plan.price_uzs)
+        if reason:
+            raise HTTPException(400, f"promo code: {reason}")
+        if not await reserve_promo(session, found):
+            raise HTTPException(400, "promo code: used_up")
+        promo_code = found.code
     f = await store_upload(session, receipt, "receipt", user.id, IMAGE_TYPES + ("application/pdf",), MAX_IMAGE)
-    req = PaymentRequest(user_id=user.id, plan_id=plan.id, amount=plan.price_uzs,
-                         payment_code=await new_payment_code(session), receipt_image=file_ref(f))
+    req = PaymentRequest(user_id=user.id, plan_id=plan.id, amount=plan.price_uzs - discount, promo_code=promo_code,
+                         discount=discount, payment_code=await new_payment_code(session), receipt_image=file_ref(f))
     session.add(req)
     await session.flush()
     await sync_user_status(session, user)
@@ -551,5 +573,6 @@ async def my_payments(user: User = Depends(current_user), session: AsyncSession 
     rows = (await session.execute(
         select(PaymentRequest, Plan.name).join(Plan, Plan.id == PaymentRequest.plan_id)
         .where(PaymentRequest.user_id == user.id).order_by(PaymentRequest.id.desc()).limit(20))).all()
-    return [{"id": r.id, "plan": name, "amount": r.amount, "code": r.payment_code, "status": r.status.value,
+    return [{"id": r.id, "plan": name, "amount": r.amount, "promo": r.promo_code, "code": r.payment_code,
+             "status": r.status.value,
              "reject_reason": r.reject_reason, "created_at": r.created_at} for r, name in rows]

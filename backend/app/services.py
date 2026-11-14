@@ -3,12 +3,12 @@ import secrets
 from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException, UploadFile
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from .config import get_settings as get_app_settings
-from .models import (AuditLog, PaymentRequest, PaymentStatus, Plan, Question, Setting,
+from .models import (AuditLog, PromoCode, PaymentRequest, PaymentStatus, Plan, Question, Setting,
                      StoredFile, Subscription, SubscriptionSource, SubscriptionStatus, User, UserStatus)
 
 # ---------------------------------------------------------------- settings
@@ -224,6 +224,9 @@ async def reject_payment(session: AsyncSession, req: PaymentRequest, admin_tg: i
     if req.status != PaymentStatus.pending:
         raise HTTPException(409, f"request already {req.status.value}")
     req.status = PaymentStatus.rejected
+    if req.promo_code:  # a rejected payment gives the promo use back
+        await session.execute(update(PromoCode).where(PromoCode.code == req.promo_code, PromoCode.used_count > 0)
+                              .values(used_count=PromoCode.used_count - 1))
     req.reject_reason = (reason or "other")[:300]
     req.reviewed_by = admin_tg
     req.reviewed_at = now_utc()
@@ -231,6 +234,47 @@ async def reject_payment(session: AsyncSession, req: PaymentRequest, admin_tg: i
     if user:
         await sync_user_status(session, user)
     audit(session, admin_tg, "payment.reject", f"payment:{req.id}", reason=req.reject_reason)
+
+
+# ---------------------------------------------------------------- promo codes
+
+PROMO_REASONS = ("unknown", "inactive", "expired", "used_up", "already_used", "too_big")
+
+
+def promo_discount(kind: str, value: int, price: int) -> int:
+    return price * value // 100 if kind == "percent" else value
+
+
+async def check_promo(session: AsyncSession, user_id: int, code: str, price: int) -> tuple[PromoCode | None, int, str | None]:
+    """(promo, discount in UZS, None) if the code can be used now, else (promo or None, 0, reason)."""
+    code = (code or "").strip().upper()
+    promo = (await session.execute(select(PromoCode).where(PromoCode.code == code))).scalar_one_or_none() if code else None
+    if promo is None:
+        return None, 0, "unknown"
+    if not promo.is_active:
+        return promo, 0, "inactive"
+    if promo.expires_at is not None and promo.expires_at <= now_utc():
+        return promo, 0, "expired"
+    if promo.max_uses is not None and promo.used_count >= promo.max_uses:
+        return promo, 0, "used_up"
+    taken = (await session.execute(select(PaymentRequest.id).where(
+        PaymentRequest.user_id == user_id, PaymentRequest.promo_code == promo.code,
+        PaymentRequest.status != PaymentStatus.rejected).limit(1))).first()
+    if taken:
+        return promo, 0, "already_used"
+    discount = promo_discount(promo.kind, promo.value, price)
+    if discount >= price:  # the plan would cost nothing: that is what a gift is for
+        return promo, 0, "too_big"
+    return promo, discount, None
+
+
+async def reserve_promo(session: AsyncSession, promo: PromoCode) -> bool:
+    """Take one use atomically, so a limited code cannot be over-used by simultaneous payments."""
+    row = (await session.execute(
+        update(PromoCode).where(PromoCode.id == promo.id,
+                                (PromoCode.max_uses.is_(None)) | (PromoCode.used_count < PromoCode.max_uses))
+        .values(used_count=PromoCode.used_count + 1).returning(PromoCode.id))).first()
+    return row is not None
 
 
 def round_half(x: float) -> float:

@@ -139,6 +139,21 @@ class PaymentRequest(Base):
     reviewed_by: Mapped[int | None] = mapped_column(BigInteger)  # admin telegram_id
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    promo_code: Mapped[str | None] = mapped_column(String(32))
+    discount: Mapped[int] = mapped_column(Integer, default=0)  # UZS taken off the plan price
+
+
+class PromoCode(Base):
+    __tablename__ = "promo_codes"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    code: Mapped[str] = mapped_column(String(32), unique=True, index=True)  # stored upper-case
+    kind: Mapped[str] = mapped_column(String(8))  # "percent" or "fixed"
+    value: Mapped[int] = mapped_column(Integer)
+    max_uses: Mapped[int | None] = mapped_column(Integer)
+    used_count: Mapped[int] = mapped_column(Integer, default=0)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class Subscription(Base):

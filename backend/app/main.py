@@ -9,7 +9,7 @@ from sqlalchemy import select, text
 
 from . import models  # noqa: F401  (register tables)
 from . import broadcasts, telegram
-from .api import admin, broadcasts as broadcasts_api, health, learner, reports
+from .api import admin, broadcasts as broadcasts_api, health, learner, promos, reports
 from .config import get_settings
 from .db import Base, SessionLocal, engine
 from .models import Subscription, SubscriptionStatus, User
@@ -26,6 +26,8 @@ MIGRATIONS = [
     "ALTER TABLE broadcasts ADD COLUMN IF NOT EXISTS created_by BIGINT",
     "ALTER TABLE broadcasts ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT now()",
     "ALTER TABLE broadcasts ADD COLUMN IF NOT EXISTS sent_at TIMESTAMPTZ",
+    "ALTER TABLE payment_requests ADD COLUMN IF NOT EXISTS promo_code VARCHAR(32)",
+    "ALTER TABLE payment_requests ADD COLUMN IF NOT EXISTS discount INTEGER NOT NULL DEFAULT 0",
     # a restart in the middle of a send must not resend: mark it interrupted instead
     "UPDATE broadcasts SET status = 'interrupted' WHERE status = 'sending'",
 ]
@@ -126,4 +128,5 @@ app.include_router(learner.router)
 app.include_router(admin.router)
 app.include_router(reports.router)
 app.include_router(broadcasts_api.router)
+app.include_router(promos.router)
 app.include_router(telegram.router)

@@ -4,7 +4,7 @@ import { AuthImage, Badge, Err, Loading, Modal, Page, useLoad } from "../ui";
 
 interface Pay {
   id: number; code: string; amount: number; status: string; plan: string; receipt: number | null;
-  reject_reason: string | null; created_at: string; reviewed_at: string | null;
+  reject_reason: string | null; created_at: string; reviewed_at: string | null; promo: string | null; discount: number;
   user: { id: number; name: string | null; phone: string | null; telegram_id: number };
 }
 
@@ -37,7 +37,7 @@ export default function Payments() {
               <tr key={p.id} className="clickable" onClick={() => setOpen(p)}>
                 <td><b>{p.code}</b></td>
                 <td>{p.user.name ?? "—"}<div className="muted small">{p.user.phone ?? p.user.telegram_id}</div></td>
-                <td>{p.plan}</td><td>{fmtSum(p.amount)}</td><td>{fmtDate(p.created_at)}</td>
+                <td>{p.plan}</td><td>{fmtSum(p.amount)}{p.promo && <div className="muted small">🏷 {p.promo} −{fmtSum(p.discount)}</div>}</td><td>{fmtDate(p.created_at)}</td>
                 <td><Badge value={p.status} /></td>
                 <td><button className="btn small">Open</button></td>
               </tr>
@@ -54,7 +54,7 @@ export default function Payments() {
                 <dt>Phone</dt><dd>{open.user.phone ?? "—"}</dd>
                 <dt>Telegram ID</dt><dd>{open.user.telegram_id}</dd>
                 <dt>Plan</dt><dd>{open.plan}</dd>
-                <dt>Amount</dt><dd><b>{fmtSum(open.amount)} UZS</b></dd>
+                <dt>Amount</dt><dd><b>{fmtSum(open.amount)} UZS</b>{open.promo && <div className="muted small">Promo {open.promo}: −{fmtSum(open.discount)} UZS taken off the plan price. Check the receipt against this amount.</div>}</dd>
                 <dt>Sent</dt><dd>{fmtDate(open.created_at)}</dd>
                 <dt>Status</dt><dd><Badge value={open.status} />{open.reject_reason ? ` · ${open.reject_reason}` : ""}</dd>
               </dl>

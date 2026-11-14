@@ -137,7 +137,8 @@ def payment_caption(req: PaymentRequest, user: User, plan: Plan) -> str:
     return (f"💳 New payment request {req.payment_code}\n"
             f"Name: {user.full_name or '-'}\nPhone: {user.phone or '-'}\n"
             f"Telegram ID: {user.telegram_id}\nPlan: {plan.name} ({plan.days} days)\n"
-            f"Amount: {req.amount:,} UZS".replace(",", " "))
+            f"Amount: {req.amount:,} UZS".replace(",", " ")
+            + (f"\nPromo {req.promo_code}: -{req.discount:,} UZS".replace(",", " ") if req.promo_code else ""))
 
 
 async def notify_admins_payment(session: AsyncSession, req: PaymentRequest) -> None:

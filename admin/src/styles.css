@@ -76,8 +76,9 @@ table.compact td { padding: 6px 8px; }
 
 .badge { display: inline-block; font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: #eef0f3; color: var(--muted); }
 .b-approved, .b-subscriber, .b-active { background: #e3f5ea; color: var(--good); }
-.b-pending, .b-scheduled, .b-sending { background: #fdf3dc; color: var(--warn); }
+.b-pending, .b-scheduled, .b-sending, .b-off { background: #fdf3dc; color: var(--warn); }
 .b-sent { background: #e3f5ea; color: var(--good); }
+.b-expired, .b-used.up { background: #fbe4e4; color: #c0392b; }
 .b-interrupted { background: #fbe4e4; color: #c0392b; }
 .b-rejected, .b-blocked, .b-expired, .b-cancelled { background: #fbe9e9; color: var(--danger); }
 .score { font-weight: 700; }

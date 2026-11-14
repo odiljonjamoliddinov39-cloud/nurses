@@ -190,3 +190,9 @@ audio { width: 100%; height: 40px; }
 .card.ok-card { background: color-mix(in srgb, var(--good) 14%, var(--card)); }
 .big-score { font-size: 54px; font-weight: 800; line-height: 1.1; }
 .big-score span { font-size: 24px; color: var(--hint); font-weight: 600; }
+
+/* promo code */
+.promo-row { display: flex; gap: 8px; margin-top: 6px; }
+.promo-row input { flex: 1; min-width: 0; padding: 10px 12px; border-radius: 10px; font: inherit; letter-spacing: .04em;
+  border: 1px solid color-mix(in srgb, var(--hint) 35%, transparent); background: var(--bg2); color: var(--text); }
+.ok-text { color: var(--good); font-size: 14px; }
