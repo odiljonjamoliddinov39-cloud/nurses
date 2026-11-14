@@ -255,6 +255,21 @@ async def send_admin_code(session: AsyncSession, chat_id: int, tg_id: int) -> No
     await send(chat_id, text, **extra)
 
 
+async def send_admin_password(session: AsyncSession, chat_id: int, tg_id: int) -> None:
+    """/password: sets a NEW random admin password and sends it here. Also the way back in if it was forgotten."""
+    if tg_id not in get_settings().admin_ids:
+        return
+    from . import admin_password
+    password = admin_password.generate_password()
+    await admin_password.set_password(session, password)
+    from .services import audit
+    audit(session, tg_id, "admin.password.reset", "admin", reason="via bot")
+    await session.commit()
+    await send(chat_id, f"🔑 Admin password:\n<code>{password}</code>\n\n"
+                        "Sign in with it on the admin page, then change it in Settings → Admin password. "
+                        "Any earlier password no longer works. Delete this message afterwards.", parse_mode="HTML")
+
+
 async def handle_message(session: AsyncSession, msg: dict) -> None:
     frm = msg.get("from") or {}
     chat_id = (msg.get("chat") or {}).get("id")
@@ -287,6 +302,9 @@ async def handle_message(session: AsyncSession, msg: dict) -> None:
     text = (msg.get("text") or "").strip()
     if re.match(r"^/(admin|login)(@\w+)?(\s|$)", text):
         await send_admin_code(session, chat_id, frm["id"])
+        return
+    if re.match(r"^/password(@\w+)?(\s|$)", text):
+        await send_admin_password(session, chat_id, frm["id"])
         return
     if text.startswith("/start") or not user.phone:
         welcome = (await get_setting(session, "welcome_text")) or tr("welcome", lang)

@@ -22,15 +22,17 @@ Tables are created on startup; new columns are added by the small `MIGRATIONS` l
 ## 2. Vercel (two projects, same repo)
 - **miniapp**: Root Directory `miniapp`, framework Vite, env `VITE_API_URL=https://<backend domain>`.
 - **admin**: Root Directory `admin`, framework Vite, env `VITE_API_URL=https://<backend domain>`.
-  (`VITE_BOT_USERNAME` is optional: it only adds the Telegram login-widget button.)
 - Settings -> Environments -> Production: track the branch you push to, so pushes go live.
 
 ## 3. Telegram and first run
-- **Admin sign-in:** open the admin panel at any address, send `/admin` to your bot, type the code it replies with.
-  The code works once and expires in 10 minutes; only IDs in `ADMIN_TELEGRAM_IDS` get one. No BotFather domain
-  setup or extra variables are needed. After your first sign-in on an https address the bot also sends a one-tap
-  "Open admin panel" button with the code. (Vercel note: every deployment has its own permanent address; use the
-  project's Domains list or the branch address `admin-git-<branch>-<team>.vercel.app`, which always shows the newest build.)
+- **Admin sign-in (password):** send `/password` to your bot (only IDs in `ADMIN_TELEGRAM_IDS` get a reply). It sends
+  you a random password; type it on the admin page, then change it under **Settings -> Admin password**. Forgot it:
+  send `/password` again for a new one. There is deliberately no built-in default password, because the repository is
+  public. Optionally set `ADMIN_PASSWORD` on the backend as an initial password; a password changed in the panel
+  always takes over. Wrong passwords lock password sign-in for 5 minutes after 10 tries.
+  Fallback: `/admin` sends a one-time code that also signs you in (works on any admin address, nothing to configure).
+  Password sign-in acts as the first ID in `ADMIN_TELEGRAM_IDS`.
+  (Vercel note: every deployment has its own permanent address; use the project's production domain.)
 - Admin panel -> Settings: Mini App URL (the miniapp's production `https://<project>.vercel.app`, not a
   per-deployment URL, which sits behind Vercel's login), card number and holder, free questions.
 - Admin panel -> Courses & questions: create a course, tick Published, add or import questions.

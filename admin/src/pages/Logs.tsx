@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import { api, fmtDate } from "../api";
 import { Err, Loading, Page, useLoad } from "../ui";
 
@@ -6,11 +7,11 @@ interface L { id: number; admin_id: number; action: string; object: string; old:
 export default function Logs() {
   const { data, error } = useLoad(() => api<L[]>("/admin/logs"));
   return (
-    <Page title="Logs">
+    <Page title={t("Logs")}>
       <Err msg={error} />
-      {!data ? <Loading /> : data.length === 0 ? <div className="empty">Nothing yet.</div> : (
+      {!data ? <Loading /> : data.length === 0 ? <div className="empty">{t("Nothing yet.")}</div> : (
         <table>
-          <thead><tr><th>When</th><th>Admin</th><th>Action</th><th>Object</th><th>Details</th></tr></thead>
+          <thead><tr><th>{t("When")}</th><th>{t("Admin")}</th><th>{t("Action")}</th><th>{t("Object")}</th><th>{t("Details")}</th></tr></thead>
           <tbody>
             {data.map((l) => (
               <tr key={l.id}>

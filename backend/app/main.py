@@ -9,7 +9,7 @@ from sqlalchemy import select, text
 
 from . import models  # noqa: F401  (register tables)
 from . import broadcasts, telegram
-from .api import admin, broadcasts as broadcasts_api, health, learner, promos, reports, voice
+from .api import admin, auth, broadcasts as broadcasts_api, health, learner, promos, reports, voice
 from .config import get_settings
 from .db import Base, SessionLocal, engine
 from .models import Subscription, SubscriptionStatus, User
@@ -130,4 +130,5 @@ app.include_router(reports.router)
 app.include_router(broadcasts_api.router)
 app.include_router(promos.router)
 app.include_router(voice.router)
+app.include_router(auth.router)
 app.include_router(telegram.router)

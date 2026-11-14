@@ -1,3 +1,4 @@
+import { t, tx } from "../i18n";
 import { useEffect, useRef, useState } from "react";
 import { api, del, download, nameOf, post, put, type I18n } from "../api";
 import { AuthAudio, Err, Loading, Modal, Page, useLoad } from "../ui";
@@ -20,22 +21,22 @@ export default function Content() {
   useEffect(() => { if (course && cid !== course.id) setCid(course.id); }, [course?.id]); // eslint-disable-line
 
   return (
-    <Page title="Courses and questions" actions={
+    <Page title={t("Courses and questions")} actions={
       <>
         {courses.data && courses.data.length > 0 && (
           <select value={course?.id ?? ""} onChange={(e) => setCid(+e.target.value)}>
-            {courses.data.map((c) => <option key={c.id} value={c.id}>{nameOf(c.name)}{c.is_published ? "" : " (hidden)"}</option>)}
+            {courses.data.map((c) => <option key={c.id} value={c.id}>{nameOf(c.name)}{c.is_published ? "" : " " + t("(hidden)")}</option>)}
           </select>
         )}
-        {course && <button className="btn secondary" onClick={() => setEditCourse(course)}>Edit course</button>}
-        <button className="btn" onClick={() => setEditCourse({ name: {}, description: {}, is_published: false })}>+ New course</button>
+        {course && <button className="btn secondary" onClick={() => setEditCourse(course)}>{t("Edit course")}</button>}
+        <button className="btn" onClick={() => setEditCourse({ name: {}, description: {}, is_published: false })}>{t("+ New course")}</button>
       </>}>
       <Err msg={courses.error} />
       {!courses.data ? <Loading /> : !course ? (
-        <div className="empty">No courses yet. Create the first course, e.g. "Hamshiralar og'zaki imtihoni".</div>
+        <div className="empty">{t("No courses yet. Create the first course, e.g. \"Hamshiralar og'zaki imtihoni\".")}</div>
       ) : (
         <>
-          {!course.is_published && <div className="alert warn">This course is hidden from users. Open "Edit course" and tick "Published" when it's ready.</div>}
+          {!course.is_published && <div className="alert warn">{t("This course is hidden from users. Open \"Edit course\" and tick \"Published\" when it's ready.")}</div>}
           <Topics course={course} onChange={courses.reload} />
           <Questions key={course.id} course={course} onChange={courses.reload} />
         </>
@@ -59,17 +60,17 @@ function CourseModal({ course, onClose, onSaved }: { course: Partial<Course>; on
     } catch (e) { setMsg((e as Error).message); }
   };
   return (
-    <Modal title={course.id ? "Edit course" : "New course"} onClose={onClose}>
+    <Modal title={course.id ? t("Edit course") : t("New course")} onClose={onClose}>
       <div className="form">
         {(["uz", "ru", "en"] as const).map((l) => (
-          <label key={l}>Name ({l}){l === "uz" ? " *" : ""}<input value={name[l] ?? ""} onChange={(e) => setName({ ...name, [l]: e.target.value })} /></label>
+          <label key={l}>{t("Name")} ({l}){l === "uz" ? " *" : ""}<input value={name[l] ?? ""} onChange={(e) => setName({ ...name, [l]: e.target.value })} /></label>
         ))}
         {(["uz", "ru", "en"] as const).map((l) => (
-          <label key={l}>Description ({l})<textarea rows={2} value={desc[l] ?? ""} onChange={(e) => setDesc({ ...desc, [l]: e.target.value })} /></label>
+          <label key={l}>{t("Description")} ({l})<textarea rows={2} value={desc[l] ?? ""} onChange={(e) => setDesc({ ...desc, [l]: e.target.value })} /></label>
         ))}
-        <label className="check"><input type="checkbox" checked={pub} onChange={(e) => setPub(e.target.checked)} /> Published (visible to users)</label>
+        <label className="check"><input type="checkbox" checked={pub} onChange={(e) => setPub(e.target.checked)} /> {t("Published (visible to users)")}</label>
         <Err msg={msg} />
-        <button className="btn" onClick={save} disabled={!name.uz && !name.ru && !name.en}>Save</button>
+        <button className="btn" onClick={save} disabled={!name.uz && !name.ru && !name.en}>{t("Save")}</button>
       </div>
     </Modal>
   );
@@ -82,26 +83,26 @@ function Topics({ course, onChange }: { course: Course; onChange: () => void }) 
     try { await post(`/admin/courses/${course.id}/topics`, { name, order: course.topics.length }); setName(""); onChange(); }
     catch (e) { setMsg((e as Error).message); }
   };
-  const rename = async (t: Topic) => {
-    const n = prompt("Topic name", t.name);
-    if (n && n.trim()) { await put(`/admin/topics/${t.id}`, { name: n, order: t.order }); onChange(); }
+  const rename = async (tp: Topic) => {
+    const n = prompt(t("Topic name"), tp.name);
+    if (n && n.trim()) { await put(`/admin/topics/${tp.id}`, { name: n, order: tp.order }); onChange(); }
   };
-  const remove = async (t: Topic) => {
-    if (confirm(`Delete topic "${t.name}"? Its questions stay, without a topic.`)) { await del(`/admin/topics/${t.id}`); onChange(); }
+  const remove = async (tp: Topic) => {
+    if (confirm(t("Delete topic \"{name}\"? Its questions stay, without a topic.", { name: tp.name }))) { await del(`/admin/topics/${tp.id}`); onChange(); }
   };
   return (
     <div className="panel">
-      <h3>Topics</h3>
+      <h3>{t("Topics")}</h3>
       <div className="row gap wrap">
-        {course.topics.map((t) => (
-          <span key={t.id} className="tag">{t.name}
-            <button className="icon" title="Rename" onClick={() => rename(t)}>✎</button>
-            <button className="icon" title="Delete" onClick={() => remove(t)}>✕</button>
+        {course.topics.map((tp) => (
+          <span key={tp.id} className="tag">{tp.name}
+            <button className="icon" title={t("Rename")} onClick={() => rename(tp)}>✎</button>
+            <button className="icon" title={t("Delete")} onClick={() => remove(tp)}>✕</button>
           </span>
         ))}
-        <input placeholder="New topic" value={name} onChange={(e) => setName(e.target.value)}
+        <input placeholder={t("New topic")} value={name} onChange={(e) => setName(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && name.trim() && add()} />
-        <button className="btn small" disabled={!name.trim()} onClick={add}>Add</button>
+        <button className="btn small" disabled={!name.trim()} onClick={add}>{t("Add")}</button>
       </div>
       <Err msg={msg} />
     </div>
@@ -143,23 +144,23 @@ function VoicePanel({ course, missing, onDone }: { course: Course; missing: numb
   return (
     <div className="alert">
       <div className="row gap wrap">
-        <b>🔊 AI voice</b>
-        <span>{missing} clip{missing === 1 ? "" : "s"} without audio</span>
+        <b>{t("🔊 AI voice")}</b>
+        <span>{t(missing === 1 ? "{n} clip without audio" : "{n} clips without audio", { n: missing })}</span>
         <select value={lang} onChange={(e) => setLang(e.target.value as "uz" | "ru")} disabled={job?.running}>
-          <option value="uz">Uzbek</option><option value="ru">Russian</option>
+          <option value="uz">{t("Uzbek")}</option><option value="ru">{t("Russian")}</option>
         </select>
-        <button className="btn small" disabled={job?.running || missing === 0} onClick={start}>Generate missing audio</button>
-        <span className="muted small">Fills only what is missing; recordings you uploaded are never replaced.</span>
+        <button className="btn small" disabled={job?.running || missing === 0} onClick={start}>{t("Generate missing audio")}</button>
+        <span className="muted small">{t("Fills only what is missing; recordings you uploaded are never replaced.")}</span>
       </div>
       {job && (
         <div style={{ marginTop: 8 }}>
           <div className="progress-bar"><div style={{ width: `${pct}%` }} /></div>
           <div className="small">
-            {job.running ? "Generating… " : job.total === 0 ? "Nothing to generate." : "Finished. "}
-            {job.total > 0 && `${job.done} done${job.failed ? `, ${job.failed} failed` : ""} of ${job.total}`}
-            {job.skipped ? ` (${job.skipped} skipped: no text)` : ""}
+            {job.running ? t("Generating…") + " " : job.total === 0 ? t("Nothing to generate.") : t("Finished.") + " "}
+            {job.total > 0 && t(job.failed ? "{done} done, {failed} failed of {total}" : "{done} done of {total}", { done: job.done, failed: job.failed, total: job.total })}
+            {job.skipped ? t(" ({n} skipped: no text)", { n: job.skipped }) : ""}
           </div>
-          {job.last_error && <div className="error-text small">Last error: {job.last_error}</div>}
+          {job.last_error && <div className="error-text small">{t("Last error:")} {job.last_error}</div>}
         </div>
       )}
       <Err msg={msg} />
@@ -176,31 +177,31 @@ function Questions({ course, onChange }: { course: Course; onChange: () => void 
   const refresh = () => { reload(); onChange(); };
 
   const doImport = async (f: File) => {
-    setImportMsg("Importing…");
+    setImportMsg(t("Importing…"));
     const fd = new FormData();
     fd.append("file", f);
     try {
       const r = await post<{ created: number; updated: number }>(`/admin/courses/${course.id}/import`, fd);
-      setImportMsg(`Imported: ${r.created} new, ${r.updated} updated.`);
+      setImportMsg(t("Imported: {created} new, {updated} updated.", r));
       refresh();
-    } catch (e) { setImportMsg(`Import failed: ${(e as Error).message}`); }
+    } catch (e) { setImportMsg(`${t("Import failed:")} ${(e as Error).message}`); }
     if (file.current) file.current.value = "";
   };
 
-  const topicName = (id: number | null) => course.topics.find((t) => t.id === id)?.name ?? "";
+  const topicName = (id: number | null) => course.topics.find((tp) => tp.id === id)?.name ?? "";
   const nextNumber = Math.max(0, ...(data ?? []).map((q) => q.number)) + 1;
   const shown = (data ?? []).filter((q) => !filter || q.text.toLowerCase().includes(filter.toLowerCase()) || String(q.number) === filter);
 
   return (
     <div className="panel">
       <div className="page-head small-head">
-        <h3>Questions ({data?.length ?? 0})</h3>
+        <h3>{t("Questions")} ({data?.length ?? 0})</h3>
         <div className="row gap wrap">
-          <input placeholder="Search" value={filter} onChange={(e) => setFilter(e.target.value)} />
-          <button className="btn secondary small" onClick={() => download("/admin/import-template", "questions-template.xlsx")}>Excel template</button>
-          <button className="btn secondary small" onClick={() => file.current?.click()}>Import Excel</button>
-          <button className="btn secondary small" onClick={() => download(`/admin/courses/${course.id}/export`, `questions-${course.id}.xlsx`)}>Export Excel</button>
-          <button className="btn small" onClick={() => setEdit({ course_id: course.id, number: nextNumber, text: "", model_answer: "", key_points: [], is_active: true, topic_id: null })}>+ Question</button>
+          <input placeholder={t("Search")} value={filter} onChange={(e) => setFilter(e.target.value)} />
+          <button className="btn secondary small" onClick={() => download("/admin/import-template", "questions-template.xlsx")}>{t("Excel template")}</button>
+          <button className="btn secondary small" onClick={() => file.current?.click()}>{t("Import Excel")}</button>
+          <button className="btn secondary small" onClick={() => download(`/admin/courses/${course.id}/export`, `questions-${course.id}.xlsx`)}>{t("Export Excel")}</button>
+          <button className="btn small" onClick={() => setEdit({ course_id: course.id, number: nextNumber, text: "", model_answer: "", key_points: [], is_active: true, topic_id: null })}>{t("+ Question")}</button>
           <input ref={file} type="file" accept=".xlsx" hidden onChange={(e) => e.target.files?.[0] && doImport(e.target.files[0])} />
         </div>
       </div>
@@ -209,21 +210,21 @@ function Questions({ course, onChange }: { course: Course; onChange: () => void 
         <VoicePanel course={course} onDone={reload}
           missing={data.filter((q) => q.is_active).reduce((n, q) => n + (q.question_audio ? 0 : q.text.trim() ? 1 : 0) + (q.answer_audio ? 0 : q.model_answer.trim() ? 1 : 0), 0)} />
       )}
-      <p className="muted small">Excel columns: <code>number, topic, question, model_answer, key_points, explanation</code>. Key points go one per line; add <code>| 2</code> after a point to give it weight 2. Rows with an existing number are updated.</p>
+      <p className="muted small">{tx("Excel columns: {cols}. Key points go one per line; add {two} after a point to give it weight 2. Rows with an existing number are updated.", { cols: <code>number, topic, question, model_answer, key_points, explanation</code>, two: <code>| 2</code> })}</p>
       <Err msg={error} />
-      {!data ? <Loading /> : data.length === 0 ? <div className="empty">No questions yet. Add one or import an Excel file.</div> : (
+      {!data ? <Loading /> : data.length === 0 ? <div className="empty">{t("No questions yet. Add one or import an Excel file.")}</div> : (
         <table>
-          <thead><tr><th>#</th><th>Question</th><th>Topic</th><th>Key points</th><th>Test</th><th>Audio</th><th /></tr></thead>
+          <thead><tr><th>#</th><th>{t("Question")}</th><th>{t("Topic")}</th><th>{t("Key points")}</th><th>{t("Test")}</th><th>{t("Audio")}</th><th /></tr></thead>
           <tbody>
             {shown.map((q) => (
               <tr key={q.id} className={`clickable ${q.is_active ? "" : "dim"}`} onClick={() => setEdit(q)}>
                 <td>{q.number}</td>
-                <td className="clip">{q.text}{!q.is_active && <span className="muted small"> (hidden)</span>}</td>
+                <td className="clip">{q.text}{!q.is_active && <span className="muted small"> {t("(hidden)")}</span>}</td>
                 <td>{topicName(q.topic_id)}</td>
                 <td>{q.key_points.length || <span className="warn-text">0</span>}</td>
                 <td>{q.mcq_options.length ? "✔" : <span className="muted">—</span>}</td>
                 <td>{q.question_audio ? "🔊" : ""}{q.answer_audio ? "🎧" : ""}</td>
-                <td><button className="btn small">Edit</button></td>
+                <td><button className="btn small">{t("Edit")}</button></td>
               </tr>
             ))}
           </tbody>
@@ -262,7 +263,7 @@ function QuestionModal({ q, course, onClose, onSaved }: { q: Partial<Q>; course:
     } catch (e) { setMsg((e as Error).message); } finally { setBusy(false); }
   };
   const remove = async () => {
-    if (!q.id || !confirm("Delete this question? If users already answered it, it is hidden instead.")) return;
+    if (!q.id || !confirm(t("Delete this question? If users already answered it, it is hidden instead."))) return;
     await del(`/admin/questions/${q.id}`);
     onSaved();
   };
@@ -277,7 +278,7 @@ function QuestionModal({ q, course, onClose, onSaved }: { q: Partial<Q>; course:
   };
   const generate = async (kind: "question" | "answer") => {
     const has = audio[kind] != null;
-    if (has && !confirm("This will replace the existing audio, including a teacher's recording. Continue?")) return;
+    if (has && !confirm(t("This will replace the existing audio, including a teacher's recording. Continue?"))) return;
     setGenerating(kind); setMsg("");
     try {
       const r = await post<{ file: number }>(`/admin/questions/${q.id}/tts`, { kind, lang: voiceLang, overwrite: has });
@@ -290,74 +291,74 @@ function QuestionModal({ q, course, onClose, onSaved }: { q: Partial<Q>; course:
   };
 
   return (
-    <Modal title={q.id ? `Question ${q.number}` : "New question"} onClose={onClose} wide>
+    <Modal title={q.id ? t("Question {n}", { n: q.number ?? 0 }) : t("New question")} onClose={onClose} wide>
       <div className="form">
         <div className="row gap">
-          <label style={{ width: 100 }}>Number<input type="number" value={f.number ?? ""} onChange={(e) => setF({ ...f, number: +e.target.value })} /></label>
-          <label style={{ flex: 1 }}>Topic
+          <label style={{ width: 100 }}>{t("Number")}<input type="number" value={f.number ?? ""} onChange={(e) => setF({ ...f, number: +e.target.value })} /></label>
+          <label style={{ flex: 1 }}>{t("Topic")}
             <select value={f.topic_id ?? ""} onChange={(e) => setF({ ...f, topic_id: e.target.value ? +e.target.value : null })}>
-              <option value="">— none —</option>
-              {course.topics.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+              <option value="">{t("— none —")}</option>
+              {course.topics.map((tp) => <option key={tp.id} value={tp.id}>{tp.name}</option>)}
             </select>
           </label>
           <label className="check" style={{ alignSelf: "flex-end" }}><input type="checkbox" checked={f.is_active ?? true}
-            onChange={(e) => setF({ ...f, is_active: e.target.checked })} /> Active</label>
+            onChange={(e) => setF({ ...f, is_active: e.target.checked })} /> {t("Active")}</label>
         </div>
-        <label>Question *<textarea rows={3} value={f.text ?? ""} onChange={(e) => setF({ ...f, text: e.target.value })} /></label>
-        <label>Model answer<textarea rows={6} value={f.model_answer ?? ""} onChange={(e) => setF({ ...f, model_answer: e.target.value })} /></label>
+        <label>{t("Question *")}<textarea rows={3} value={f.text ?? ""} onChange={(e) => setF({ ...f, text: e.target.value })} /></label>
+        <label>{t("Model answer")}<textarea rows={6} value={f.model_answer ?? ""} onChange={(e) => setF({ ...f, model_answer: e.target.value })} /></label>
         <fieldset>
-          <legend>Key points (what a good answer must mention; weight = importance)</legend>
+          <legend>{t("Key points (what a good answer must mention; weight = importance)")}</legend>
           {kps.map((k, i) => (
             <div key={i} className="row gap kp-row">
-              <input style={{ flex: 1 }} value={k.text} onChange={(e) => setKp(i, { text: e.target.value })} placeholder={`Point ${i + 1}`} />
-              <input type="number" min={0.5} step={0.5} value={k.weight} onChange={(e) => setKp(i, { weight: +e.target.value })} style={{ width: 70 }} title="weight" />
+              <input style={{ flex: 1 }} value={k.text} onChange={(e) => setKp(i, { text: e.target.value })} placeholder={t("Point {n}", { n: i + 1 })} />
+              <input type="number" min={0.5} step={0.5} value={k.weight} onChange={(e) => setKp(i, { weight: +e.target.value })} style={{ width: 70 }} title={t("weight")} />
               <button className="icon" onClick={() => setF({ ...f, key_points: kps.filter((_, j) => j !== i) })}>✕</button>
             </div>
           ))}
-          <button className="btn small secondary" onClick={() => setF({ ...f, key_points: [...kps, { text: "", weight: 1 }] })}>+ Key point</button>
+          <button className="btn small secondary" onClick={() => setF({ ...f, key_points: [...kps, { text: "", weight: 1 }] })}>{t("+ Key point")}</button>
         </fieldset>
         <fieldset>
-          <legend>Test mode (multiple choice, optional: leave empty to keep this question out of tests)</legend>
+          <legend>{t("Test mode (multiple choice, optional: leave empty to keep this question out of tests)")}</legend>
           {opts.map((o, i) => (
             <div key={i} className="row gap kp-row">
-              <input type="radio" name="correct" checked={o.is_correct} onChange={() => pickCorrect(i)} title="correct answer" />
-              <input style={{ flex: 1 }} value={o.text} onChange={(e) => setOpt(i, { text: e.target.value })} placeholder={`Option ${i + 1}`} />
+              <input type="radio" name="correct" checked={o.is_correct} onChange={() => pickCorrect(i)} title={t("correct answer")} />
+              <input style={{ flex: 1 }} value={o.text} onChange={(e) => setOpt(i, { text: e.target.value })} placeholder={t("Option {n}", { n: i + 1 })} />
               <button className="icon" onClick={() => setF({ ...f, mcq_options: opts.filter((_, j) => j !== i) })}>✕</button>
             </div>
           ))}
-          {opts.length < 6 && <button className="btn small secondary" onClick={() => setF({ ...f, mcq_options: [...opts, { text: "", is_correct: opts.length === 0 }] })}>+ Option</button>}
-          {opts.length > 0 && <p className="muted small">Select the radio button next to the one correct option. 2 to 6 options. The explanation below is shown after the user answers.</p>}
+          {opts.length < 6 && <button className="btn small secondary" onClick={() => setF({ ...f, mcq_options: [...opts, { text: "", is_correct: opts.length === 0 }] })}>{t("+ Option")}</button>}
+          {opts.length > 0 && <p className="muted small">{t("Select the radio button next to the one correct option. 2 to 6 options. The explanation below is shown after the user answers.")}</p>}
         </fieldset>
-        <label>Explanation (optional)<textarea rows={2} value={f.explanation ?? ""} onChange={(e) => setF({ ...f, explanation: e.target.value })} /></label>
+        <label>{t("Explanation (optional)")}<textarea rows={2} value={f.explanation ?? ""} onChange={(e) => setF({ ...f, explanation: e.target.value })} /></label>
         {q.id ? (
           <fieldset>
-            <legend>Audio (teacher's recording or AI voice)</legend>
+            <legend>{t("Audio (teacher's recording or AI voice)")}</legend>
             {(["question", "answer"] as const).map((kind) => (
               <div key={kind} className="row gap wrap audio-row">
-                <b style={{ width: 130 }}>{kind === "question" ? "Question audio" : "Model answer audio"}</b>
-                {audio[kind] ? <><AuthAudio id={audio[kind]!} /><button className="btn small danger" onClick={() => removeAudio(kind)}>Remove</button></>
-                  : <span className="muted small">none</span>}
-                <label className="btn small secondary">Upload<input type="file" accept="audio/*" hidden
+                <b style={{ width: 130 }}>{kind === "question" ? t("Question audio") : t("Model answer audio")}</b>
+                {audio[kind] ? <><AuthAudio id={audio[kind]!} /><button className="btn small danger" onClick={() => removeAudio(kind)}>{t("Remove")}</button></>
+                  : <span className="muted small">{t("none")}</span>}
+                <label className="btn small secondary">{t("Upload")}<input type="file" accept="audio/*" hidden
                   onChange={(e) => e.target.files?.[0] && upload(kind, e.target.files[0])} /></label>
                 {voice.data?.configured && (
                   <button className="btn small secondary" disabled={generating !== null} onClick={() => generate(kind)}>
-                    {generating === kind ? "Generating…" : "🔊 AI voice"}
+                    {generating === kind ? t("Generating…") : t("🔊 AI voice")}
                   </button>
                 )}
               </div>
             ))}
             {voice.data?.configured ? (
-              <div className="row gap small-gap"><span className="muted small">AI voice language:</span>
+              <div className="row gap small-gap"><span className="muted small">{t("AI voice language:")}</span>
                 <select value={voiceLang} onChange={(e) => setVoiceLang(e.target.value as "uz" | "ru")}>
-                  <option value="uz">Uzbek</option><option value="ru">Russian</option>
+                  <option value="uz">{t("Uzbek")}</option><option value="ru">{t("Russian")}</option>
                 </select></div>
-            ) : voice.data && <p className="muted small">To generate audio with AI voice, add the Azure Speech key in Settings.</p>}
+            ) : voice.data && <p className="muted small">{t("To generate audio with AI voice, add the Azure Speech key in Settings.")}</p>}
           </fieldset>
-        ) : <p className="muted small">Save the question first to add audio.</p>}
+        ) : <p className="muted small">{t("Save the question first to add audio.")}</p>}
         <Err msg={msg} />
         <div className="row gap">
-          <button className="btn" onClick={save} disabled={busy || !f.text?.trim() || !f.number}>Save</button>
-          {q.id && <button className="btn danger" onClick={remove}>Delete</button>}
+          <button className="btn" onClick={save} disabled={busy || !f.text?.trim() || !f.number}>{t("Save")}</button>
+          {q.id && <button className="btn danger" onClick={remove}>{t("Delete")}</button>}
         </div>
       </div>
     </Modal>
