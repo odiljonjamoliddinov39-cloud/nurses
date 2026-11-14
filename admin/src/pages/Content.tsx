@@ -108,6 +108,65 @@ function Topics({ course, onChange }: { course: Course; onChange: () => void }) 
   );
 }
 
+interface Job { job_id: number; total: number; done: number; failed: number; skipped: number; running: boolean; last_error: string | null }
+
+/** One-click AI voice for every question that has no audio yet; shows progress while it runs. */
+function VoicePanel({ course, missing, onDone }: { course: Course; missing: number; onDone: () => void }) {
+  const status = useLoad(() => api<{ configured: boolean }>("/admin/tts/status"));
+  const [lang, setLang] = useState<"uz" | "ru">("uz");
+  const [job, setJob] = useState<Job | null>(null);
+  const [msg, setMsg] = useState("");
+
+  useEffect(() => {
+    if (!job?.running) return;
+    const h = window.setInterval(async () => {
+      try {
+        const j = await api<Job>(`/admin/tts/jobs/${job.job_id}`);
+        setJob(j);
+        if (!j.running) { window.clearInterval(h); onDone(); }
+      } catch (e) { setMsg((e as Error).message); window.clearInterval(h); }
+    }, 2000);
+    return () => window.clearInterval(h);
+  }, [job?.job_id, job?.running]); // eslint-disable-line
+
+  const start = async () => {
+    setMsg("");
+    try {
+      const j = await post<Job>(`/admin/courses/${course.id}/tts-missing`, { lang });
+      setJob(j);
+      if (!j.running) onDone();
+    } catch (e) { setMsg((e as Error).message); }
+  };
+
+  if (!status.data?.configured) return null;
+  const pct = job && job.total ? Math.round(((job.done + job.failed) / job.total) * 100) : 0;
+  return (
+    <div className="alert">
+      <div className="row gap wrap">
+        <b>🔊 AI voice</b>
+        <span>{missing} clip{missing === 1 ? "" : "s"} without audio</span>
+        <select value={lang} onChange={(e) => setLang(e.target.value as "uz" | "ru")} disabled={job?.running}>
+          <option value="uz">Uzbek</option><option value="ru">Russian</option>
+        </select>
+        <button className="btn small" disabled={job?.running || missing === 0} onClick={start}>Generate missing audio</button>
+        <span className="muted small">Fills only what is missing; recordings you uploaded are never replaced.</span>
+      </div>
+      {job && (
+        <div style={{ marginTop: 8 }}>
+          <div className="progress-bar"><div style={{ width: `${pct}%` }} /></div>
+          <div className="small">
+            {job.running ? "Generating… " : job.total === 0 ? "Nothing to generate." : "Finished. "}
+            {job.total > 0 && `${job.done} done${job.failed ? `, ${job.failed} failed` : ""} of ${job.total}`}
+            {job.skipped ? ` (${job.skipped} skipped: no text)` : ""}
+          </div>
+          {job.last_error && <div className="error-text small">Last error: {job.last_error}</div>}
+        </div>
+      )}
+      <Err msg={msg} />
+    </div>
+  );
+}
+
 function Questions({ course, onChange }: { course: Course; onChange: () => void }) {
   const { data, error, reload } = useLoad(() => api<Q[]>(`/admin/courses/${course.id}/questions`), [course.id]);
   const [edit, setEdit] = useState<Partial<Q> | null>(null);
@@ -146,6 +205,10 @@ function Questions({ course, onChange }: { course: Course; onChange: () => void 
         </div>
       </div>
       {importMsg && <div className="alert">{importMsg}</div>}
+      {data && data.length > 0 && (
+        <VoicePanel course={course} onDone={reload}
+          missing={data.filter((q) => q.is_active).reduce((n, q) => n + (q.question_audio ? 0 : q.text.trim() ? 1 : 0) + (q.answer_audio ? 0 : q.model_answer.trim() ? 1 : 0), 0)} />
+      )}
       <p className="muted small">Excel columns: <code>number, topic, question, model_answer, key_points, explanation</code>. Key points go one per line; add <code>| 2</code> after a point to give it weight 2. Rows with an existing number are updated.</p>
       <Err msg={error} />
       {!data ? <Loading /> : data.length === 0 ? <div className="empty">No questions yet. Add one or import an Excel file.</div> : (
@@ -176,6 +239,9 @@ function QuestionModal({ q, course, onClose, onSaved }: { q: Partial<Q>; course:
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
   const [audio, setAudio] = useState({ question: q.question_audio ?? null, answer: q.answer_audio ?? null });
+  const [voiceLang, setVoiceLang] = useState<"uz" | "ru">("uz");
+  const [generating, setGenerating] = useState<"question" | "answer" | null>(null);
+  const voice = useLoad(() => api<{ configured: boolean }>("/admin/tts/status"));
   const kps = f.key_points ?? [];
   const opts = f.mcq_options ?? [];
   const setOpt = (i: number, patch: Partial<Opt>) => setF({ ...f, mcq_options: opts.map((o, j) => (j === i ? { ...o, ...patch } : o)) });
@@ -208,6 +274,15 @@ function QuestionModal({ q, course, onClose, onSaved }: { q: Partial<Q>; course:
       const r = await post<{ file: number }>(`/admin/questions/${q.id}/audio`, fd);
       setAudio({ ...audio, [kind]: r.file });
     } catch (e) { setMsg((e as Error).message); }
+  };
+  const generate = async (kind: "question" | "answer") => {
+    const has = audio[kind] != null;
+    if (has && !confirm("This will replace the existing audio, including a teacher's recording. Continue?")) return;
+    setGenerating(kind); setMsg("");
+    try {
+      const r = await post<{ file: number }>(`/admin/questions/${q.id}/tts`, { kind, lang: voiceLang, overwrite: has });
+      setAudio({ ...audio, [kind]: r.file });
+    } catch (e) { setMsg((e as Error).message); } finally { setGenerating(null); }
   };
   const removeAudio = async (kind: "question" | "answer") => {
     await del(`/admin/questions/${q.id}/audio/${kind}`);
@@ -256,7 +331,7 @@ function QuestionModal({ q, course, onClose, onSaved }: { q: Partial<Q>; course:
         <label>Explanation (optional)<textarea rows={2} value={f.explanation ?? ""} onChange={(e) => setF({ ...f, explanation: e.target.value })} /></label>
         {q.id ? (
           <fieldset>
-            <legend>Audio (teacher's recording)</legend>
+            <legend>Audio (teacher's recording or AI voice)</legend>
             {(["question", "answer"] as const).map((kind) => (
               <div key={kind} className="row gap wrap audio-row">
                 <b style={{ width: 130 }}>{kind === "question" ? "Question audio" : "Model answer audio"}</b>
@@ -264,8 +339,19 @@ function QuestionModal({ q, course, onClose, onSaved }: { q: Partial<Q>; course:
                   : <span className="muted small">none</span>}
                 <label className="btn small secondary">Upload<input type="file" accept="audio/*" hidden
                   onChange={(e) => e.target.files?.[0] && upload(kind, e.target.files[0])} /></label>
+                {voice.data?.configured && (
+                  <button className="btn small secondary" disabled={generating !== null} onClick={() => generate(kind)}>
+                    {generating === kind ? "Generating…" : "🔊 AI voice"}
+                  </button>
+                )}
               </div>
             ))}
+            {voice.data?.configured ? (
+              <div className="row gap small-gap"><span className="muted small">AI voice language:</span>
+                <select value={voiceLang} onChange={(e) => setVoiceLang(e.target.value as "uz" | "ru")}>
+                  <option value="uz">Uzbek</option><option value="ru">Russian</option>
+                </select></div>
+            ) : voice.data && <p className="muted small">To generate audio with AI voice, add the Azure Speech key in Settings.</p>}
           </fieldset>
         ) : <p className="muted small">Save the question first to add audio.</p>}
         <Err msg={msg} />

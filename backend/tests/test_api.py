@@ -623,3 +623,83 @@ async def test_promo_one_use_race(client):
     assert promo["used_count"] == 1
     discounted = [p for p in (await client.get("/admin/payments?status=all", headers=A)).json() if p["promo"]]
     assert len(discounted) == 1                                    # the losers created no payment request
+
+
+async def test_ai_voice(client, monkeypatch):
+    from app import tts
+    from app.api import voice
+    monkeypatch.setattr(voice, "PAUSE", 0)
+    A = {"Authorization": "Bearer " + (await client.post("/admin/login", json=widget(ADMIN))).json()["token"]}
+    cid, _, qids = await seed_course(client, A, n=4)
+    await client.put("/admin/settings", headers=A, json={"free_questions": 4})
+    U = init_data(801, "Ana")
+
+    calls = []
+
+    async def fake(text, *, key, region, voice, transport=None):
+        if not key or not region:  # like the real client
+            raise tts.TTSError("set the Azure Speech key and region in Settings first", fatal=True)
+        calls.append((text, key, region, voice))
+        if text == "A3":
+            raise tts.TTSError("Azure refused the request")
+        return b"ID3fake:" + text.encode()
+
+    monkeypatch.setattr(tts, "synthesize", fake)
+
+    # not configured yet: clear message, nothing is called
+    assert (await client.get("/admin/tts/status", headers=A)).json()["configured"] is False
+    r = await client.post(f"/admin/questions/{qids[0]}/tts", headers=A, json={"kind": "question"})
+    assert r.status_code == 400 and "Settings" in r.text and calls == []
+    assert (await client.post(f"/admin/courses/{cid}/tts-missing", headers=A, json={})).status_code == 400
+    await client.put("/admin/settings", headers=A, json={"azure_tts_key": "SECRET-KEY-1234", "azure_tts_region": "WestEurope"})
+    st = (await client.get("/admin/tts/status", headers=A)).json()
+    assert st["configured"] is True and st["voices"]["uz"] == "uz-UZ-MadinaNeural"
+    assert "SECRET-KEY" not in (await client.get("/admin/settings", headers=A)).text   # the key is never sent back
+
+    # one clip: stored, attached, playable by a learner who may open the question
+    r = await client.post(f"/admin/questions/{qids[0]}/tts", headers=A, json={"kind": "question", "lang": "ru"})
+    assert r.status_code == 200, r.text
+    assert calls[-1] == ("Q1?", "SECRET-KEY-1234", "westeurope", "ru-RU-SvetlanaNeural")   # region normalised, Russian voice
+    listed = (await client.get(f"/admin/courses/{cid}/questions", headers=A)).json()
+    assert listed[0]["question_audio"] == r.json()["file"] and listed[0]["answer_audio"] is None
+    f = await client.get(f"/files/{r.json()['file']}", headers=U)
+    assert f.status_code == 200 and f.content == b"ID3fake:Q1?" and f.headers["content-type"] == "audio/mpeg"
+
+    # a teacher's recording has priority: refused unless explicitly overwritten
+    assert (await client.post(f"/admin/questions/{qids[0]}/tts", headers=A, json={"kind": "question"})).status_code == 409
+    n = len(calls)
+    r2 = await client.post(f"/admin/questions/{qids[0]}/tts", headers=A, json={"kind": "question", "overwrite": True})
+    assert r2.status_code == 200 and r2.json()["file"] != r.json()["file"] and len(calls) == n + 1
+    assert (await client.get(f"/files/{r.json()['file']}", headers=U)).status_code == 404   # the old clip is gone, no leak
+
+    # bulk: only what is missing, never overwrites, counts failures, skips empty text
+    await client.put(f"/admin/questions/{qids[3]}", headers=A, json={"course_id": cid, "number": 4, "text": "Q4?", "model_answer": ""})
+    await client.put(f"/admin/questions/{qids[2]}", headers=A, json={"course_id": cid, "number": 3, "text": "Q3?", "model_answer": "A3"})
+    calls.clear()
+    j = (await client.post(f"/admin/courses/{cid}/tts-missing", headers=A, json={"lang": "uz"})).json()
+    assert j["total"] == 6          # 8 possible clips, minus Q1's existing question audio, minus Q4's empty answer
+    st = (await client.get(f"/admin/tts/jobs/{j['job_id']}", headers=A)).json()
+    assert st["running"] is False and (st["done"], st["failed"]) == (5, 1) and st["last_error"] == "Azure refused the request"
+    assert ("Q1?", "SECRET-KEY-1234", "westeurope", "uz-UZ-MadinaNeural") not in calls     # Q1 already had audio: untouched
+    assert all(v == "uz-UZ-MadinaNeural" for *_, v in calls)
+    done = {q["number"]: (q["question_audio"] is not None, q["answer_audio"] is not None)
+            for q in (await client.get(f"/admin/courses/{cid}/questions", headers=A)).json()}
+    assert done == {1: (True, True), 2: (True, True), 3: (True, False), 4: (True, False)}
+    # running it again only retries what is still missing (the failed Q3 answer; Q4's answer has no text)
+    calls.clear()
+    j2 = (await client.post(f"/admin/courses/{cid}/tts-missing", headers=A, json={})).json()
+    assert j2["total"] == 1 and [c[0] for c in calls] == ["A3"]
+
+    # a bad key stops the batch at once instead of failing every clip
+    async def rejected(text, **kw):
+        calls.append(text)
+        raise tts.TTSError("Azure rejected the key or region", fatal=True)
+
+    monkeypatch.setattr(tts, "synthesize", rejected)
+    cid2, _, _ = await seed_course(client, A, n=5)
+    calls.clear()
+    j3 = (await client.post(f"/admin/courses/{cid2}/tts-missing", headers=A, json={})).json()
+    st3 = (await client.get(f"/admin/tts/jobs/{j3['job_id']}", headers=A)).json()
+    assert len(calls) == 1 and st3["failed"] == 1 and st3["running"] is False and "rejected" in st3["last_error"]
+    assert (await client.get("/admin/tts/jobs/9999", headers=A)).status_code == 404
+    assert (await client.get("/admin/tts/status", headers=U)).status_code in (401, 403)

@@ -27,8 +27,12 @@ DEFAULT_SETTINGS: dict = {
     "miniapp_url": "",           # https URL of the Mini App (menu button / "Open app")
     "welcome_text": "",
     "max_answer_seconds": 180,
+    "azure_tts_key": "",         # Azure Speech key, for AI voice in the admin panel
+    "azure_tts_region": "",      # e.g. "westeurope"
+    "tts_voice_uz": "uz-UZ-MadinaNeural",
+    "tts_voice_ru": "ru-RU-SvetlanaNeural",
 }
-SECRET_SETTINGS = {"gemini_api_key"}
+SECRET_SETTINGS = {"gemini_api_key", "azure_tts_key"}
 
 
 async def get_settings_map(session: AsyncSession) -> dict:
