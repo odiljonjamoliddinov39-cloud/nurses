@@ -7,6 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from .config import get_settings as get_app_settings
 from .models import (AuditLog, PaymentRequest, PaymentStatus, Plan, Question, Setting,
                      StoredFile, Subscription, SubscriptionSource, SubscriptionStatus, User, UserStatus)
 
@@ -36,6 +37,8 @@ async def get_settings_map(session: AsyncSession) -> dict:
     for r in rows:
         if r.key in DEFAULT_SETTINGS and r.value is not None:
             data[r.key] = r.value.get("v") if isinstance(r.value, dict) else r.value
+    if not data["miniapp_url"]:  # the MINIAPP_URL environment variable is the default for the admin setting
+        data["miniapp_url"] = get_app_settings().miniapp_url
     return data
 
 

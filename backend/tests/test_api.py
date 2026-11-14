@@ -292,3 +292,19 @@ async def test_favourites_stats_mock_learn(client):
     await client.put("/admin/settings", headers=A, json={"free_questions": 0})
     assert (await client.get(f"/courses/{cid}/learn", headers=U)).json()["items"] == []
     assert (await client.get(f"/courses/{cid}/mock", headers=U)).status_code == 404
+
+
+async def test_miniapp_url_falls_back_to_env(client, monkeypatch):
+    from app.config import get_settings
+    from app.db import SessionLocal
+    from app.services import get_setting, put_settings
+
+    async with SessionLocal() as s:
+        assert await get_setting(s, "miniapp_url") == ""
+    monkeypatch.setattr(get_settings(), "miniapp_url", "https://env.example.app")
+    async with SessionLocal() as s:
+        assert await get_setting(s, "miniapp_url") == "https://env.example.app"
+        await put_settings(s, {"miniapp_url": "https://admin.example.app"})  # the admin setting wins
+        await s.commit()
+    async with SessionLocal() as s:
+        assert await get_setting(s, "miniapp_url") == "https://admin.example.app"
